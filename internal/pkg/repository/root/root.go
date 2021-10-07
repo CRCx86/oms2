@@ -3,8 +3,8 @@ package root
 import (
 	"context"
 	"errors"
-
 	"go.uber.org/zap"
+	"oms2/internal/pkg/util"
 
 	"oms2/internal/pkg/storage/postgres"
 )
@@ -32,9 +32,23 @@ func NewRepository(s *postgres.Postgres, log *zap.Logger) *Repository {
 	}
 }
 
-func (r *Repository) List(ctx context.Context) (interface{}, error) {
+func (r *Repository) List(ctx context.Context, _sql string, args ...interface{}) (interface{}, error) {
 
-	r.zl.Sugar().Info("step: ", ctx)
+	conn, err := r.storage.Conn(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	return nil, nil
+	rows, err := conn.Query(ctx, _sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	objects, err := util.ParseRowQuery(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return objects, nil
 }
