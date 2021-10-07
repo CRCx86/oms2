@@ -32,6 +32,23 @@ func NewRepository(s *postgres.Postgres, log *zap.Logger) *Repository {
 	}
 }
 
+func (r Repository) Create(ctx context.Context, _sql string, args ...interface{}) (uint, error) {
+
+	conn, err := r.storage.Conn(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	var result uint
+	err = conn.QueryRow(ctx, _sql, args...).Scan(&result)
+	if err != nil {
+		return 0, err
+	}
+
+	return result, err
+
+}
+
 func (r *Repository) List(ctx context.Context, _sql string, args ...interface{}) (interface{}, error) {
 
 	conn, err := r.storage.Conn(ctx)

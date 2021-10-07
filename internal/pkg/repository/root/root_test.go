@@ -29,9 +29,27 @@ func TestRepository_List(t *testing.T) {
 	require.NoError(t, err)
 	defer p.Stop(ctx)
 
+	conn, err := p.Conn(ctx)
+	require.NoError(t, err)
+	_, err = conn.Exec(ctx, "TRUNCATE TABLE lots CASCADE;")
+	require.NoError(t, err)
+
 	repo := NewRepository(p, zl)
 
+	// Создать лот
 	sbSQL := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+	sql, args, err := sbSQL.Insert("lots").
+		Columns("name").
+		Values("lot1").
+		Suffix("RETURNING id").
+		ToSql()
+	require.NoError(t, err)
+	created, err := repo.Create(ctx, sql, args...)
+	require.NoError(t, err)
+	require.Less(t, uint(0), created)
+
+	// Получить список лотов
+	sbSQL = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 	q := sbSQL.Select().From("lots l")
 	q = q.Columns(
 		"l.id",
@@ -40,8 +58,8 @@ func TestRepository_List(t *testing.T) {
 	_sql, args, err := q.ToSql()
 	require.NoError(t, err)
 
-	list, err := repo.List(ctx, _sql, args)
+	list, err := repo.List(ctx, _sql, args...)
 	require.NoError(t, err)
 
-	require.Len(t, list, 2)
+	require.Len(t, list, 1)
 }
