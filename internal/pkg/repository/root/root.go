@@ -3,10 +3,11 @@ package root
 import (
 	"context"
 	"errors"
+
 	"go.uber.org/zap"
-	"oms2/internal/pkg/util"
 
 	"oms2/internal/pkg/storage/postgres"
+	"oms2/internal/pkg/util"
 )
 
 var (
@@ -15,9 +16,9 @@ var (
 )
 
 const (
-	id     = "id"
-	number = "number"
-	name   = "name"
+	Id     = "id"
+	Number = "number"
+	Name   = "name"
 )
 
 type Repository struct {

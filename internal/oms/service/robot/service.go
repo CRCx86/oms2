@@ -2,7 +2,6 @@ package robot
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"time"
@@ -10,24 +9,33 @@ import (
 	"go.uber.org/zap"
 
 	"oms2/internal/oms"
-	"oms2/internal/pkg/repository/root"
+	"oms2/internal/pkg/repository/robot"
+)
+
+const (
+	IterationModel = "Iteration"
+	TilingModel    = "Tiling"
 )
 
 type Service struct {
-	zl     *zap.Logger
-	cfg    *oms.Config
-	root   *root.Repository
-	ticker *time.Ticker
-	done   chan bool
+	zl              *zap.Logger
+	cfg             *oms.Config
+	ticker          *time.Ticker
+	done            chan bool
+	model           string
+	action          *Action
+	robotRepository *robot.Repository
 }
 
-func NewService(cfg *oms.Config, root *root.Repository, zl *zap.Logger) *Service {
+func NewService(cfg *oms.Config, action *Action, r *robot.Repository, zl *zap.Logger) *Service {
 	return &Service{
-		zl:     zl,
-		cfg:    cfg,
-		root:   root,
-		ticker: time.NewTicker(2 * time.Second),
-		done:   make(chan bool),
+		zl:              zl,
+		cfg:             cfg,
+		ticker:          time.NewTicker(2 * time.Second),
+		done:            make(chan bool),
+		model:           IterationModel,
+		action:          action,
+		robotRepository: r,
 	}
 }
 
@@ -47,7 +55,7 @@ func (s *Service) Start(ctx context.Context) error {
 				if err != nil {
 					s.ticker.Stop()
 					s.done <- true
-					log.Println(err)
+					s.zl.Sugar().Error(err)
 				}
 			}
 		}
@@ -56,12 +64,12 @@ func (s *Service) Start(ctx context.Context) error {
 	go func() {
 		select {
 		case sig := <-signals:
-			log.Printf("Got %s signals. Aborting...", sig)
+			s.zl.Sugar().Info("Got %s signals. Aborting...", sig)
 			s.ticker.Stop()
 		}
 	}()
 
-	log.Println("Robot has started")
+	s.zl.Sugar().Info("Robot has started")
 
 	return nil
 
@@ -75,12 +83,42 @@ func (s *Service) Stop(_ context.Context) error {
 	return nil
 }
 
-func (s *Service) Do(ctx context.Context, t time.Time) error {
+func (s *Service) Do(ctx context.Context, t time.Time) (err error) {
 
-	list, err := s.root.List(ctx)
+	if s.model == TilingModel {
+		err = s.Tiling(ctx, t)
+	} else {
+		err = s.Iteration(ctx, t)
+	}
 
-	s.zl.Sugar().Info(list, err, t)
+	return err
+}
+
+func (s *Service) Iteration(ctx context.Context, t time.Time) (ok error) {
+
+	ok = s.DoStep(ctx)
+	if ok != nil {
+		s.zl.Sugar().Error(ok)
+		return ok
+	}
+
+	s.zl.Sugar().Info("Robot at", t)
+	return ok
+}
+
+func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 
 	return nil
+}
 
+func (s *Service) DoStep(ctx context.Context) (ok error) {
+
+	return ok
+}
+
+func (s *Service) DoStepAndEvents() (result interface{}) {
+
+	//result = a.DoIncomingEvents()
+	//result = a.DoNextStep(nil)
+	return result
 }

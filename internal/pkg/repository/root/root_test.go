@@ -31,6 +31,8 @@ func TestRepository_List(t *testing.T) {
 
 	conn, err := p.Conn(ctx)
 	require.NoError(t, err)
+
+	// Очистить таблицу
 	_, err = conn.Exec(ctx, "TRUNCATE TABLE lots CASCADE;")
 	require.NoError(t, err)
 

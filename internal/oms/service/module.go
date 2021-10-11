@@ -11,6 +11,7 @@ import (
 func Module() fx.Option {
 	return fx.Options(
 		fx.Provide(health.NewService),
+		fx.Provide(robot.NewAction),
 		fx.Provide(robot.NewService),
 
 		fx.Invoke(func(lc fx.Lifecycle, cfg *oms.Config, service *robot.Service) {

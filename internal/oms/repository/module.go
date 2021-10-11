@@ -9,5 +9,6 @@ import (
 func Module() fx.Option {
 	return fx.Options(
 		fx.Provide(root.NewRepository),
+		fx.Provide(root.NewRepository),
 	)
 }
