@@ -42,14 +42,6 @@ func NewConfig() (*Config, error) {
 		cfg.Logger.Debug = true
 	}
 
-	//cfg.Logger.Level = "info"
-	//
-	//cfg.StartTimeout = 20 * time.Second
-	//cfg.StopTimeout = 60 * time.Second
-	//
-	//cfg.APIServer.Host = ""
-	//cfg.APIServer.ApiPort = 8080
-
 	return cfg, nil
 }
 

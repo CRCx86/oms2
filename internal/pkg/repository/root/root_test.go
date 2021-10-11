@@ -46,7 +46,7 @@ func TestRepository_List(t *testing.T) {
 		Suffix("RETURNING id").
 		ToSql()
 	require.NoError(t, err)
-	created, err := repo.Create(ctx, sql, args...)
+	created, err := repo.CreateOrUpdate(ctx, sql, args...)
 	require.NoError(t, err)
 	require.Less(t, uint(0), created)
 
@@ -60,7 +60,7 @@ func TestRepository_List(t *testing.T) {
 	_sql, args, err := q.ToSql()
 	require.NoError(t, err)
 
-	list, err := repo.List(ctx, _sql, args...)
+	list, err := repo.Get(ctx, _sql, args...)
 	require.NoError(t, err)
 
 	require.Len(t, list, 1)

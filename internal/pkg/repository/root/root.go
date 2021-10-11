@@ -3,6 +3,7 @@ package root
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.uber.org/zap"
 
@@ -33,24 +34,29 @@ func NewRepository(s *postgres.Postgres, log *zap.Logger) *Repository {
 	}
 }
 
-func (r Repository) Create(ctx context.Context, _sql string, args ...interface{}) (uint, error) {
+func (r *Repository) CreateOrUpdate(ctx context.Context, _sql string, args ...interface{}) (uint, error) {
 
 	conn, err := r.storage.Conn(ctx)
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 
 	var result uint
-	err = conn.QueryRow(ctx, _sql, args...).Scan(&result)
+	err = tx.QueryRow(ctx, _sql, args...).Scan(&result)
 	if err != nil {
+		err = tx.Rollback(ctx)
 		return 0, err
 	}
+	err = tx.Commit(ctx)
+
+	fmt.Println(result)
 
 	return result, err
 
 }
 
-func (r *Repository) List(ctx context.Context, _sql string, args ...interface{}) (interface{}, error) {
+func (r *Repository) Get(ctx context.Context, _sql string, args ...interface{}) ([]map[string]interface{}, error) {
 
 	conn, err := r.storage.Conn(ctx)
 	if err != nil {
@@ -69,4 +75,16 @@ func (r *Repository) List(ctx context.Context, _sql string, args ...interface{})
 	}
 
 	return objects, nil
+}
+
+func (r *Repository) Delete(ctx context.Context, sql string, args ...interface{}) error {
+
+	conn, err := r.storage.Conn(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, sql, args)
+	return err
 }
