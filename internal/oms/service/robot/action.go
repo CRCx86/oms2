@@ -22,6 +22,12 @@ func NewAction(cfg *oms.Config, zl *zap.Logger) *Action {
 
 func (a *Action) FirstInit(data interface{}) error {
 	fmt.Println("FirstInit", data)
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
+	return nil
+}
+
+func (a *Action) SecondInit(data interface{}) error {
+	fmt.Println("SecondInit", data)
+	time.Sleep(1 * time.Second)
 	return nil
 }
