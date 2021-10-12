@@ -14,7 +14,6 @@ func ParseRowQuery(rows pgx.Rows) ([]map[string]interface{}, error) {
 	valuesPointers := make([]interface{}, count)
 
 	var objects []map[string]interface{}
-	object := map[string]interface{}{}
 	for rows.Next() {
 		for i := range columns {
 			valuesPointers[i] = &values[i]
@@ -25,6 +24,7 @@ func ParseRowQuery(rows pgx.Rows) ([]map[string]interface{}, error) {
 			return nil, err
 		}
 
+		object := map[string]interface{}{}
 		for i, column := range columns {
 			val := values[i]
 			object[column] = val

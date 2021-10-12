@@ -2,25 +2,22 @@ package root
 
 import (
 	"context"
-	"errors"
-	"fmt"
-
 	"go.uber.org/zap"
 
 	"oms2/internal/pkg/storage/postgres"
 	"oms2/internal/pkg/util"
 )
 
-var (
-	ErrBadModel         = errors.New("bad model")
-	ErrValidationFailed = errors.New("validation failed")
-)
+//var (
+//	ErrBadModel         = errors.New("bad model")
+//	ErrValidationFailed = errors.New("validation failed")
+//)
 
-const (
-	Id     = "id"
-	Number = "number"
-	Name   = "name"
-)
+//const (
+//	Id     = "id"
+//	Number = "number"
+//	Name   = "name"
+//)
 
 type Repository struct {
 	zl      *zap.Logger
@@ -49,8 +46,6 @@ func (r *Repository) CreateOrUpdate(ctx context.Context, _sql string, args ...in
 		return 0, err
 	}
 	err = tx.Commit(ctx)
-
-	fmt.Println(result)
 
 	return result, err
 
@@ -85,6 +80,13 @@ func (r *Repository) Delete(ctx context.Context, sql string, args ...interface{}
 		return err
 	}
 
-	_, err = tx.Exec(ctx, sql, args)
+	_, err = tx.Exec(ctx, sql, args...)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return err
+	}
+
+	err = tx.Commit(ctx)
+
 	return err
 }

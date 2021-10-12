@@ -2,7 +2,6 @@ package robot
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -13,10 +12,10 @@ import (
 	"oms2/internal/pkg/storage/postgres"
 )
 
-var (
-	ErrBadModel         = errors.New("bad model")
-	ErrValidationFailed = errors.New("validation failed")
-)
+//var (
+//	ErrBadModel         = errors.New("bad model")
+//	ErrValidationFailed = errors.New("validation failed")
+//)
 
 type Repository struct {
 	zl             *zap.Logger
@@ -36,7 +35,7 @@ func (r *Repository) Processing(ctx context.Context) ([]map[string]interface{}, 
 
 	_sql, args, err := squirrel.StatementBuilder.
 		Select("ln.thread as thread," +
-			"ln.id as id," +
+			"ln.id as proc_id," +
 			"l.id as lot_id," +
 			"n.id as node_id," +
 			"n.action as action," +
@@ -60,9 +59,10 @@ func (r *Repository) Processing(ctx context.Context) ([]map[string]interface{}, 
 
 func (r *Repository) FindEventsPerStep(ctx context.Context) ([]map[string]interface{}, error) {
 
-	nodes, _, err := squirrel.Select("nodes.id  as node_id," +
+	nodes, _, err := squirrel.Select("nodes.id as node_id," +
 		"nodes.type as node_type," +
-		"net.event_type_id as event_type_id").
+		"net.event_type_id as event_type_id," +
+		"nodes.event_trigger as event_trigger").
 		From("nodes as nodes").
 		LeftJoin("nodes_event_types as net on net.node_id = nodes.id").
 		Where("case when nodes.type = 'action' and net.event_type_id is null then false else true end").
@@ -77,13 +77,15 @@ func (r *Repository) FindEventsPerStep(ctx context.Context) ([]map[string]interf
 			"ltnds.id as proc_id," +
 				"events.lot_id as lot_id," +
 				"events.event_type_id as event_type_id," +
-				"nodes.node_id as node_id," +
+				"ne.node_id as node_id," +
 				"ltnds.node_id as prev_id").
 		From("event_semaphores as semaphores").
 		LeftJoin("events as events on semaphores.event_id = events.id").
 		InnerJoin("lots_nodes as ltnds on events.lot_id = ltnds.lot_id").
 		InnerJoin(fmt.Sprintf("(%s) as nodes on events.event_type_id = nodes.event_type_id "+
-			"and ltnds.node_id < nodes.node_id", nodes)).
+			"and ltnds.node_id = nodes.node_id", nodes)).
+		InnerJoin(fmt.Sprintf("(%s) as ne on events.event_type_id = ne.event_trigger "+
+			"and nodes.node_id <= ne.node_id", nodes)).
 		PlaceholderFormat(squirrel.Dollar).
 		ToSql()
 	if err != nil {
@@ -94,19 +96,20 @@ func (r *Repository) FindEventsPerStep(ctx context.Context) ([]map[string]interf
 	return r.RootRepository.Get(ctx, _sql, args...)
 }
 
-func (r *Repository) UpdateProcessing(ctx context.Context, event map[string]interface{}) (uint, error) {
+func (r *Repository) UpdateProcessing(ctx context.Context, data map[string]interface{}, nodeId int64) (uint, error) {
 
 	var _sql string
 	var args []interface{}
 	var err error
-	if event["proc_id"] == 0 {
+
+	if data["proc_id"] == 0 {
 
 		_sql, args, err = squirrel.
 			StatementBuilder.
 			PlaceholderFormat(squirrel.Dollar).
 			Insert("lots_nodes").
 			Columns("lot_id", "node_id", "entry_time").
-			Values(event["lotId"], event["nodeId"], time.Now()).
+			Values(data["lotId"], nodeId, time.Now()).
 			Suffix("RETURNING id").
 			ToSql()
 
@@ -118,7 +121,7 @@ func (r *Repository) UpdateProcessing(ctx context.Context, event map[string]inte
 	} else {
 
 		values := make(map[string]interface{})
-		values["node_id"] = event["node_id"]
+		values["node_id"] = nodeId
 		values["entry_time"] = time.Now()
 
 		_sql, args, err = squirrel.
@@ -126,7 +129,7 @@ func (r *Repository) UpdateProcessing(ctx context.Context, event map[string]inte
 			PlaceholderFormat(squirrel.Dollar).
 			Update("lots_nodes").
 			SetMap(values).
-			Where(squirrel.Eq{"id": event["proc_id"]}).
+			Where(squirrel.Eq{"id": data["proc_id"]}).
 			Suffix("RETURNING id").
 			ToSql()
 

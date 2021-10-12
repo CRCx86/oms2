@@ -123,7 +123,7 @@ func TestRepository_RecordToNextStep(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, len(events), 1)
 
-	updated, ok := robotRepo.UpdateProcessing(ctx, events[0])
+	updated, ok := robotRepo.UpdateProcessing(ctx, events[0], 0)
 	require.NoError(t, ok)
 	require.Greater(t, updated, uint(0))
 }
@@ -163,20 +163,21 @@ func PrepareTestDB(ctx context.Context, conn *pgxpool.Pool) error {
 			foreign key(event_type_id) references event_types(id) on delete cascade,
 			foreign key(lot_id) references lots(id) on delete cascade);`,
 		`INSERT INTO events(name, event_type_id, lot_id) 
-			VALUES('event1', 1, 1), ('event1', 2, 2);`,
+			VALUES('event1', 1, 1), ('event2', 2, 2);`,
 
 		`CREATE TABLE nodes (
     		id bigserial primary key,
     		name varchar NOT NULL,
 			type varchar NOT NULL,
 			action varchar NOT NULL,
+			event_trigger int,
 			waiting_time int);`,
-		`INSERT INTO nodes(name, type, action, waiting_time) 
-			VALUES ('node1', 'action', 'FirstInit', 0), 
-			('node2', 'action', 'SecondInit', 0),
-			('node3', 'wait', 'Wait', 120), 
-			('node4', 'trigger', 'Trigger', 0),
-			('node5', 'terminate', 'Terminate', 0);`,
+		`INSERT INTO nodes(name, type, action, event_trigger, waiting_time) 
+			VALUES ('node1', 'action', 'FirstInit', null, 0), 
+			('node2', 'action', 'SecondInit', null, 0),
+			('node3', 'wait', 'Wait', null, 120), 
+			('node4', 'trigger', 'Trigger', 1, 0),
+			('node5', 'terminate', 'Terminate', null, 0);`,
 
 		`CREATE TABLE orders (
     		id bigserial primary key,

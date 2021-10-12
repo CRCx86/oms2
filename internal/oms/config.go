@@ -12,7 +12,7 @@ import (
 
 const CoreEnvironmentPrefix = "OMS"
 
-const EnvDev = "dev"
+//const EnvDev = "dev"
 
 type Config struct {
 	Env            string           `envconfig:"env"`
@@ -24,6 +24,7 @@ type Config struct {
 	Storage        config.Storage   `envconfig:"storage"`
 	Postgres       postgres.Config  `envconfig:"postgres"`
 	Logger         config.Logger    `envconfig:"logger"`
+	MaxCollectTime time.Duration    `envconfig:"max_collect_time" default:"10m"`
 	Version        string
 	BuildDate      string
 	Commit         string
