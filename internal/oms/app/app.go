@@ -49,7 +49,7 @@ func Provide(conf *oms.Config, zl *zap.Logger) fx.Option {
 
 		fx.Invoke(
 			func(cfg *oms.Config, logger *zap.Logger) {
-				logger.Info("Delivery monitoring has started...")
+				logger.Info("Order Management System has started...")
 			},
 		),
 	)
