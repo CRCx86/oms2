@@ -15,19 +15,20 @@ const CoreEnvironmentPrefix = "OMS"
 //const EnvDev = "dev"
 
 type Config struct {
-	Env            string           `envconfig:"env"`
-	Debug          bool             `envconfig:"debug"`
-	ProfilerEnable bool             `envconfig:"pprof"`
-	StartTimeout   time.Duration    `envconfig:"start_timeout" default:"20s"`
-	StopTimeout    time.Duration    `envconfig:"stop_timeout" default:"60s"`
-	APIServer      config.APIServer `envconfig:"apiserver"`
-	Storage        config.Storage   `envconfig:"storage"`
-	Postgres       postgres.Config  `envconfig:"postgres"`
-	Logger         config.Logger    `envconfig:"logger"`
-	MaxCollectTime time.Duration    `envconfig:"max_collect_time" default:"10m"`
-	Version        string
-	BuildDate      string
-	Commit         string
+	Env                string           `envconfig:"env"`
+	Debug              bool             `envconfig:"debug"`
+	ProfilerEnable     bool             `envconfig:"pprof"`
+	StartTimeout       time.Duration    `envconfig:"start_timeout" default:"20s"`
+	StopTimeout        time.Duration    `envconfig:"stop_timeout" default:"60s"`
+	APIServer          config.APIServer `envconfig:"apiserver"`
+	Storage            config.Storage   `envconfig:"storage"`
+	Postgres           postgres.Config  `envconfig:"postgres"`
+	Logger             config.Logger    `envconfig:"logger"`
+	MaxCollectTime     time.Duration    `envconfig:"max_collect_time" default:"10m"`
+	MaxRobotGoroutines int              `envconfig:"max_robot_goroutines" default:"10"`
+	Version            string
+	BuildDate          string
+	Commit             string
 }
 
 func NewConfig() (*Config, error) {

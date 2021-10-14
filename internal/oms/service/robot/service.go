@@ -144,41 +144,91 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 
 func (s *Service) DoStep(ctx context.Context) (ok error) {
 
-	processing, ok := s.robotRepository.Processing(ctx)
 	if ok != nil {
 		s.zl.Sugar().Error(ok)
 		return ok
 	}
 
-	var wg sync.WaitGroup
+	if s.cfg.MaxRobotGoroutines == 0 {
+		ok := s.DoStepAndEvents(ctx, nil)
+		if ok != nil {
+			s.zl.Sugar().Info(ok)
+		}
+	} else {
+		count, ok := s.DoAsync(ctx)
+		if ok != nil {
+			s.zl.Sugar().Info(count, ok)
+		}
+	}
+
+	return ok
+}
+
+func (s *Service) DoAsync(ctx context.Context) (int, error) {
+
+	// TODO: это непосредственно шаг лота
+	// переписать на текущий шаг маршрута и семафоры
+	processing, ok := s.robotRepository.Processing(ctx)
+
+	cursor := -1
+	limit := s.cfg.MaxRobotGoroutines - 1
+
+	var lotsByStream [][]map[string]interface{}
+
+	lots := make([]map[string]interface{}, 0)
 	for _, item := range processing {
+
+		if cursor == limit {
+			cursor = 0
+		} else {
+			cursor += 1
+		}
+
+		if len(lotsByStream) <= cursor {
+			lots = make([]map[string]interface{}, 0)
+			if len(lotsByStream) > 0 {
+				lotsByStream = append(lotsByStream, lots) // TODO: убрать
+			}
+		}
+
+		lots = append(lots, item)
+
+	}
+
+	if len(lots) > 0 {
+		lotsByStream = append(lotsByStream, lots) // TODO: убрать
+	}
+
+	var wg sync.WaitGroup
+	for _, items := range lotsByStream {
 		wg.Add(1)
-		go func(data map[string]interface{}) {
+		go func(data []map[string]interface{}) {
 			defer wg.Done()
 			err := s.DoStepAndEvents(ctx, data)
 			if err != nil {
 				s.zl.Sugar().Info(err)
 			}
-		}(item)
+		}(items)
 	}
+
 	wg.Wait()
 
-	return ok
+	return 0, ok
 }
 
-func (s *Service) DoStepAndEvents(ctx context.Context, data map[string]interface{}) (result error) {
+func (s *Service) DoStepAndEvents(ctx context.Context, lots []map[string]interface{}) (result error) {
 
-	result = s.DoIncomingEvents(ctx)
+	result = s.DoIncomingEvents(ctx, lots)
 	if result != nil {
 		return result
 	}
 
-	return s.DoNextStep(ctx, data)
+	return s.DoNextStep(ctx, lots)
 }
 
-func (s *Service) DoIncomingEvents(ctx context.Context) error {
+func (s *Service) DoIncomingEvents(ctx context.Context, lots []map[string]interface{}) error {
 
-	events, ok := s.robotRepository.FindEventsPerStep(ctx)
+	events, ok := s.robotRepository.FindEventsPerStep(ctx, lots)
 	if ok != nil {
 		s.zl.Sugar().Error(ok)
 		return ok
@@ -206,7 +256,16 @@ func (s *Service) RecordToNextStep(ctx context.Context, data map[string]interfac
 	return ok
 }
 
-func (s *Service) DoNextStep(ctx context.Context, data map[string]interface{}) error {
+func (s *Service) DoNextStep(ctx context.Context, lots []map[string]interface{}) (ok error) {
+
+	for _, lot := range lots {
+		ok = s.DoNextStepQuery(ctx, lot)
+	}
+
+	return ok
+}
+
+func (s *Service) DoNextStepQuery(ctx context.Context, data map[string]interface{}) error {
 
 	t := data["type"]
 	var err error

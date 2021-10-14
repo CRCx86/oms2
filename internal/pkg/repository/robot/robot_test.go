@@ -89,7 +89,7 @@ func TestRepository_FindEventsPerStep(t *testing.T) {
 	rootRepo := root.NewRepository(p, zl)
 
 	robotRepo := NewRepository(p, rootRepo, zl)
-	events, err := robotRepo.FindEventsPerStep(ctx)
+	events, err := robotRepo.FindEventsPerStep(ctx, nil)
 	require.NoError(t, err)
 	require.Greater(t, len(events), 1)
 }
@@ -119,7 +119,7 @@ func TestRepository_RecordToNextStep(t *testing.T) {
 	rootRepo := root.NewRepository(p, zl)
 
 	robotRepo := NewRepository(p, rootRepo, zl)
-	events, err := robotRepo.FindEventsPerStep(ctx)
+	events, err := robotRepo.FindEventsPerStep(ctx, nil)
 	require.NoError(t, err)
 	require.Greater(t, len(events), 1)
 

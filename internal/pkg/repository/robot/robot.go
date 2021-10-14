@@ -57,7 +57,7 @@ func (r *Repository) Processing(ctx context.Context) ([]map[string]interface{}, 
 	return r.RootRepository.Get(ctx, _sql, args...)
 }
 
-func (r *Repository) FindEventsPerStep(ctx context.Context) ([]map[string]interface{}, error) {
+func (r *Repository) FindEventsPerStep(ctx context.Context, lots []map[string]interface{}) ([]map[string]interface{}, error) {
 
 	nodes, _, err := squirrel.Select("nodes.id as node_id," +
 		"nodes.type as node_type," +
@@ -70,6 +70,39 @@ func (r *Repository) FindEventsPerStep(ctx context.Context) ([]map[string]interf
 	if err != nil {
 		r.zl.Sugar().Error(err)
 		return nil, err
+	}
+
+	if lots != nil {
+
+		var lotsId []interface{}
+		for _, lot := range lots {
+			lotsId = append(lotsId, lot["lot_id"])
+		}
+
+		_sql, args, err := squirrel.StatementBuilder.
+			Select(
+				"ltnds.id as proc_id," +
+					"events.lot_id as lot_id," +
+					"events.event_type_id as event_type_id," +
+					"ne.node_id as node_id," +
+					"ltnds.node_id as prev_id").
+			From("_InfoReg_ES as semaphores").
+			LeftJoin("_Ref_E as events on semaphores.event_id = events.id").
+			InnerJoin("_InfoReg_CSR as ltnds on events.lot_id = ltnds.lot_id").
+			InnerJoin(fmt.Sprintf("(%s) as nodes on events.event_type_id = nodes.event_type_id "+
+				"and ltnds.node_id = nodes.node_id", nodes)).
+			InnerJoin(fmt.Sprintf("(%s) as ne on events.event_type_id = ne.event_trigger "+
+				"and nodes.node_id <= ne.node_id", nodes)).
+			Where(squirrel.Eq{"semaphores.lot_id": lotsId}).
+			PlaceholderFormat(squirrel.Dollar).
+			ToSql()
+		if err != nil {
+			r.zl.Sugar().Error(err)
+			return nil, err
+		}
+
+		return r.RootRepository.Get(ctx, _sql, args...)
+
 	}
 
 	_sql, args, err := squirrel.StatementBuilder.
@@ -94,6 +127,7 @@ func (r *Repository) FindEventsPerStep(ctx context.Context) ([]map[string]interf
 	}
 
 	return r.RootRepository.Get(ctx, _sql, args...)
+
 }
 
 func (r *Repository) UpdateProcessing(ctx context.Context, data map[string]interface{}, nodeId int64) (uint, error) {
