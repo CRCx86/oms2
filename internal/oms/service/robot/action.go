@@ -31,7 +31,7 @@ func (a *Action) FirstInit(ctx interface{}, data interface{}) error {
 	_sql, args, err := squirrel.
 		StatementBuilder.
 		Select("*").
-		From("lots").
+		From("_Ref_L as lots").
 		PlaceholderFormat(squirrel.Dollar).
 		ToSql()
 	if err != nil {

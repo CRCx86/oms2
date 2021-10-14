@@ -131,110 +131,102 @@ func TestRepository_RecordToNextStep(t *testing.T) {
 func PrepareTestDB(ctx context.Context, conn *pgxpool.Pool) error {
 
 	qs := []string{
-		`DROP TABLE IF EXISTS event_semaphores;`,
-		`DROP TABLE IF EXISTS nodes_event_types;`,
-		`DROP TABLE IF EXISTS events;`,
-		`DROP TABLE IF EXISTS event_types;`,
-		`DROP TABLE IF EXISTS lots_nodes;`,
-		`DROP TABLE IF EXISTS lots;`,
-		`DROP TABLE IF EXISTS nodes;`,
-		`DROP TABLE IF EXISTS orders;`,
-		`DROP TABLE IF EXISTS shipments;`,
-		`DROP TABLE IF EXISTS deliveries;`,
-		`DROP TABLE IF EXISTS users;`,
+		`DROP TABLE IF EXISTS _InfoReg_ES;`,
+		`DROP TABLE IF EXISTS _RefVT_ME;`,
+		`DROP TABLE IF EXISTS _Ref_E;`,
+		`DROP TABLE IF EXISTS _Ref_ET;`,
+		`DROP TABLE IF EXISTS _InfoReg_CSR;`,
+		`DROP TABLE IF EXISTS _Ref_L;`,
+		`DROP TABLE IF EXISTS _Ref_M;`,
+		`DROP TABLE IF EXISTS _Ref_O;`,
+		`DROP TABLE IF EXISTS _Ref_S;`,
+		`DROP TABLE IF EXISTS _Ref_D;`,
 
-		`CREATE TABLE event_types (
+		`CREATE TABLE _Ref_ET (
     		id bigserial primary key,
     		name varchar NOT NULL);`,
-		`INSERT INTO event_types(name) 
+		`INSERT INTO _Ref_ET(name) 
 			VALUES('event_type1'), ('event_type2');`,
 
-		`CREATE TABLE lots (
+		`CREATE TABLE _Ref_L (
     		id bigserial primary key,
     		name varchar NOT NULL);`,
-		`INSERT INTO lots(name) 
+		`INSERT INTO _Ref_L(name) 
 			VALUES ('lot1'), ('lot2');`,
 
-		`CREATE TABLE events (
+		`CREATE TABLE _Ref_E (
     		id bigserial primary key,
     		name varchar NOT NULL,
 			event_type_id int,
 			lot_id int,
-			foreign key(event_type_id) references event_types(id) on delete cascade,
-			foreign key(lot_id) references lots(id) on delete cascade);`,
-		`INSERT INTO events(name, event_type_id, lot_id) 
+			foreign key(event_type_id) references _Ref_ET(id) on delete cascade,
+			foreign key(lot_id) references _Ref_L(id) on delete cascade);`,
+		`INSERT INTO _Ref_E(name, event_type_id, lot_id) 
 			VALUES('event1', 1, 1), ('event2', 2, 2);`,
 
-		`CREATE TABLE nodes (
+		`CREATE TABLE _Ref_M (
     		id bigserial primary key,
     		name varchar NOT NULL,
 			type varchar NOT NULL,
 			action varchar NOT NULL,
 			event_trigger int,
 			waiting_time int);`,
-		`INSERT INTO nodes(name, type, action, event_trigger, waiting_time) 
+		`INSERT INTO _Ref_M(name, type, action, event_trigger, waiting_time) 
 			VALUES ('node1', 'action', 'FirstInit', null, 0), 
 			('node2', 'action', 'SecondInit', null, 0),
 			('node3', 'wait', 'Wait', null, 120), 
 			('node4', 'trigger', 'Trigger', 1, 0),
 			('node5', 'terminate', 'Terminate', null, 0);`,
 
-		`CREATE TABLE orders (
+		`CREATE TABLE _Ref_O (
     		id bigserial primary key,
     		name varchar NOT NULL);`,
-		`INSERT INTO orders(name) 
+		`INSERT INTO _Ref_O(name) 
 			VALUES('order1'), ('order2');`,
 
-		`CREATE TABLE shipments (
+		`CREATE TABLE _Ref_S (
     		id bigserial primary key,
     		name varchar NOT NULL);`,
-		`INSERT INTO shipments(name) 
+		`INSERT INTO _Ref_S(name) 
 			VALUES('shipment1'), ('shipment1');`,
 
-		`CREATE TABLE deliveries (
+		`CREATE TABLE _Ref_D (
     		id bigserial primary key,
     		name varchar NOT NULL);`,
-		`INSERT INTO deliveries(name) 
+		`INSERT INTO _Ref_D(name) 
 			VALUES('delivery1'), ('delivery1');`,
 
-		`CREATE TABLE users (
-    		id bigserial primary key,
-    		name varchar NOT NULL,
-			age integer);`,
-		`INSERT INTO users(name, age) 
-			VALUES('user1', 1), ('user2', 2);`,
-
 		// таблица процессинга (теукщий шаг)
-		`CREATE TABLE lots_nodes (
+		`CREATE TABLE _InfoReg_CSR (
 		  id bigserial,
-		  lot_id    int REFERENCES lots (id) ON UPDATE CASCADE ON DELETE CASCADE, 
-          node_id 	int REFERENCES nodes (id) ON UPDATE CASCADE,
+		  lot_id    int REFERENCES _Ref_L (id) ON UPDATE CASCADE ON DELETE CASCADE, 
+          node_id 	int REFERENCES _Ref_M (id) ON UPDATE CASCADE,
 		  thread	int NOT NULL DEFAULT 1,
 		  entry_time timestamp WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-		  CONSTRAINT lots_nodes_pkey PRIMARY KEY (lot_id, node_id)
+		  CONSTRAINT _InfoReg_CSR_pkey PRIMARY KEY (lot_id, node_id)
 		);`,
-		`INSERT INTO lots_nodes(lot_id, node_id) 
+		`INSERT INTO _InfoReg_CSR(lot_id, node_id) 
 			VALUES(1, 1), (2, 1);`,
 
 		// табличная часть узла
-		`CREATE TABLE nodes_event_types (
+		`CREATE TABLE _RefVT_ME (
 		  id 			bigserial,
-		  node_id    	int REFERENCES nodes (id) ON UPDATE CASCADE ON DELETE CASCADE, 
-          event_type_id int REFERENCES event_types (id) ON UPDATE CASCADE,
-		  CONSTRAINT nodes_event_types_pkey PRIMARY KEY (node_id, event_type_id)
+		  node_id    	int REFERENCES _Ref_M (id) ON UPDATE CASCADE ON DELETE CASCADE, 
+          event_type_id int REFERENCES _Ref_ET (id) ON UPDATE CASCADE,
+		  CONSTRAINT _RefVT_ME_pkey PRIMARY KEY (node_id, event_type_id)
 		);`,
-		`INSERT INTO nodes_event_types(node_id, event_type_id) 
+		`INSERT INTO _RefVT_ME(node_id, event_type_id) 
 			VALUES(3, 1), (3, 2), (4, 1);`,
 
 		// семафоры обработки событий, техн.
-		`CREATE TABLE event_semaphores (
+		`CREATE TABLE _InfoReg_ES (
 		  id bigserial,
-		  lot_id    int REFERENCES lots (id) ON UPDATE CASCADE ON DELETE CASCADE, 
-          semaphore_id int REFERENCES event_types (id) ON UPDATE CASCADE,
-		  event_id  int REFERENCES events (id),
-		  CONSTRAINT event_semaphores_pkey PRIMARY KEY (lot_id, semaphore_id)
+		  lot_id    int REFERENCES _Ref_L (id) ON UPDATE CASCADE ON DELETE CASCADE, 
+          semaphore_id int REFERENCES _Ref_ET (id) ON UPDATE CASCADE,
+		  event_id  int REFERENCES _Ref_E (id),
+		  CONSTRAINT _InfoReg_ES_pkey PRIMARY KEY (lot_id, semaphore_id)
 		);`,
-		`INSERT INTO event_semaphores(lot_id, semaphore_id, event_id) 
+		`INSERT INTO _InfoReg_ES(lot_id, semaphore_id, event_id) 
 			VALUES(1, 1, 1), (2, 2, 2);`,
 	}
 

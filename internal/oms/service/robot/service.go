@@ -256,7 +256,7 @@ func (s *Service) FindNextNode(ctx context.Context, i interface{}) (int64, error
 
 	_sql, args, err := squirrel.StatementBuilder.
 		Select("*").
-		From("nodes").
+		From("_Ref_M as nodes").
 		Where(squirrel.Gt{"id": i}).
 		OrderBy("id").
 		Limit(1).
@@ -284,7 +284,7 @@ func (s *Service) Terminate(ctx context.Context, data map[string]interface{}) er
 
 	_sql, args, err := squirrel.
 		StatementBuilder.
-		Delete("lots_nodes").
+		Delete("_InfoReg_CSR").
 		Where(squirrel.Eq{"id": data["proc_id"]}).
 		PlaceholderFormat(squirrel.Dollar).
 		ToSql()
