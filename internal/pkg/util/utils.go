@@ -1,6 +1,9 @@
 package util
 
-import "github.com/jackc/pgx/v4"
+import (
+	"encoding/json"
+	"github.com/jackc/pgx/v4"
+)
 
 func ParseRowQuery(rows pgx.Rows) ([]map[string]interface{}, error) {
 	fields := rows.FieldDescriptions()
@@ -33,4 +36,17 @@ func ParseRowQuery(rows pgx.Rows) ([]map[string]interface{}, error) {
 		objects = append(objects, object)
 	}
 	return objects, nil
+}
+
+func ToEntity(data []map[string]interface{}, entity interface{}) error {
+
+	bytes, err := json.Marshal(data[0])
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(bytes, &entity)
+	if err != nil {
+		return err
+	}
+	return nil
 }

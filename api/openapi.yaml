@@ -1,0 +1,117 @@
+openapi: 3.0.3
+info:
+  title: Api Microservice
+  version: "v1"
+  description: |
+    Используется как шаблон для создания новых сервисов
+servers:
+  - url: 'http://{serverName}/api'
+    variables:
+      serverName:
+        default: localhost:8080
+
+paths:
+
+  /health:
+    post:
+      description: Хэлз-чек
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                meta:
+                  $ref: '#/components/schemas/Meta'
+                data:
+                  $ref: '#/components/schemas/Model'
+            examples:
+              health-simple:
+                $ref: '#/components/examples/HealthRequest'
+
+
+      responses:
+        200:
+          description: Результат
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - allOf:
+                      - $ref: '#/components/schemas/ApiResponse'
+                      - type: object
+                        properties:
+                          data:
+                            type: object
+                  - $ref: '#/components/schemas/DtoErrorResponse'
+
+components:
+  schemas:
+    Meta:
+      type: object
+      description: Содержимое поля возвращается без изменений
+      additionalProperties:
+        type: string
+
+    Model:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Название
+
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          description: Флаг успешности запроса
+          type: integer
+          example: 1
+        meta:
+          description: Мета информация
+          type: object
+          additionalProperties: true
+
+    DtoErrorResponse:
+      type: object
+      properties:
+        success:
+          description: Результат выполнения запроса
+          type: number
+          format: integer
+          example: 0
+        meta:
+          description: Мета информация
+          type: object
+          additionalProperties: true
+        data:
+          type: object
+        error:
+          description: Информация о возникшей ошибке
+          type: object
+          properties:
+            code:
+              description: Код ошибки
+              type: string
+            message:
+              description: Сообщение об ошибке
+              type: string
+            description:
+              description: Описание ошибки
+              type: string
+            extra:
+              description: Дополнительная информация
+              type: object
+
+  examples:
+    HealthRequest:
+      summary: Хэлз-чек
+      description: Пример хэлз-чека
+      value: |
+        {
+          "meta": {},
+          "data": {}
+        }

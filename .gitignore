@@ -1,0 +1,23 @@
+# Mac OS X files
+.DS_Store
+.vscode
+
+# Integrational python test
+*.pyc
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+/profiler
+/vendor
+/ssl
+/build/
+/.idea/
+/venv
+.netrc
+/datastore/
+*.override.yml
+
+# easyjson generated files
+*_easyjson.go
+debugger/

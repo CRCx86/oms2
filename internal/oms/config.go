@@ -31,6 +31,10 @@ type Config struct {
 	Commit             string
 }
 
+func Usage() error {
+	return envconfig.Usage(CoreEnvironmentPrefix, &Config{})
+}
+
 func NewConfig() (*Config, error) {
 
 	cfg := &Config{}

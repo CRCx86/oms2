@@ -1,0 +1,105 @@
+version: "2.3"
+
+services:
+  oms2:
+    image: ${DOCKER_IMAGE}:${VERSION}
+    environment:
+      OMS2_ENV: dev
+      OMS2_APISERVER_PORT: 8080
+      OMS2_V7_ELASTIC_URL: http://esv701:9200/
+      OMS2_APP_SERVICE_BASE_URL: http://wiremock:7070/
+    stop_grace_period: 1m
+    command: [ "/wait-for-elastic.sh", "/wait-for-elastic.sh", "http://esv701:9200", "/usr/local/bin/oms2" ]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://0.0.0.0:8080/healthcheck" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    depends_on:
+      db:
+        condition: service_healthy
+      esv701:
+        condition: service_started
+      wiremock:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    networks:
+      - oms2
+
+  db:
+    image: postgres:12
+    environment:
+      POSTGRES_USER: 'oms2'
+      POSTGRES_PASSWORD: 'oms2'
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "oms2" ]
+      timeout: 5s
+      retries: 10
+    volumes:
+      - ../fixtures:/var/fixtures
+    networks:
+      - oms2
+
+  esv701:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.5.2
+    environment:
+      - node.name=esv701
+      - cluster.name=es-docker-cluster-v7
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      - oms2
+
+  liquibase:
+    image: ${DOCKER_LIQUIBASE_IMAGE}:${VERSION}
+    command: [ "liquibase", "updateTestingRollback" ]
+    environment:
+      LIQUIBASE_DATABASE: "oms2"
+      LIQUIBASE_USERNAME: "oms2"
+      LIQUIBASE_PASSWORD: "oms2"
+      LIQUIBASE_CHANGELOG: "changelog.yaml"
+      LIQUIBASE_DEBUG: "true"
+      LIQUIBASE_URL: "jdbc:postgresql://db:5432/oms2"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - oms2
+
+  integration-tests:
+    build: ../../tests/integration
+    command: [ "/app/wait-for-app.sh", "app", "8080", "readiness", "pytest", "-xvv", "tests/" ]
+    environment:
+      OMS2_APISERVER_HOST: 'http://oms2'
+      OMS2_APISERVER_PORT: 8080
+      OMS2_SERVICE_LOG_LEVEL: INFO
+      ES_HOST_V7: esv701
+      POSTGRES_USER: 'oms2'
+      POSTGRES_PASSWORD: 'oms2'
+      POSTGRES_DATABASE: 'oms2'
+      POSTGRES_HOST: 'db'
+    depends_on:
+      - app
+    networks:
+      - oms2
+
+  wiremock:
+    image: rodolpheche/wiremock
+    command: --port 7070 --verbose
+    volumes:
+      - ../../tests/wiremock_stubs:/home/wiremock
+    ports:
+      - "7070:7070"
+    #    logging:
+    #      entity: none
+    networks:
+      - oms2
+
+networks:
+  oms2:
+    driver: bridge

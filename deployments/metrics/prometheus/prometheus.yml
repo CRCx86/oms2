@@ -1,0 +1,15 @@
+global:
+  scrape_interval:     5s
+  evaluation_interval: 5s
+
+  external_labels:
+    monitor: 'oms2'
+
+alerting:
+  alertmanagers: []
+
+scrape_configs:
+  - job_name: 'oms2'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['oms2:8080'] # только для теста.

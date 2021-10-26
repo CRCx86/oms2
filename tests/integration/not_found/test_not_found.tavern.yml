@@ -1,0 +1,16 @@
+test_name: Проверка работы ошибок 404
+
+stages:
+  - name: Проверяем работу 404 на порту апи сервера
+    request:
+      url: http://oms2:8080/wrong_url
+      method: GET
+    response:
+      status_code: 404
+
+  - name: Проверяем работу 404 на порту системного сервера
+    request:
+      url: http://oms2:8080/wrong_url
+      method: GET
+    response:
+      status_code: 404

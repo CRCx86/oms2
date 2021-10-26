@@ -13,7 +13,9 @@ import (
 )
 
 func TestRepository_List(t *testing.T) {
-	// t.Skip("Пример работы со слоем БД")
+
+	t.Skip("Пример работы со слоем БД")
+
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 
 	zl := zap.L()

@@ -1,0 +1,25 @@
+{
+  "apps": {
+    "http": {
+      "servers": {
+        "localhost": {
+          "listen": [":80"],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "file_server",
+                  "root": "/var/www/",
+                  "hide": ["caddy.json"]
+                }
+              ]
+            }
+          ],
+          "automatic_https": {
+            "disable": true
+          }
+        }
+      }
+    }
+  }
+}

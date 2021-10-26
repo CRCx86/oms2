@@ -2,6 +2,7 @@ package main
 
 import (
 	"go.uber.org/fx"
+	"os"
 
 	"oms2/internal/oms"
 	"oms2/internal/oms/app"
@@ -16,6 +17,11 @@ var (
 )
 
 func main() {
+
+	if len(os.Args) > 1 && os.Args[1] == "--help" {
+		oms.Usage()
+		return
+	}
 
 	conf, err := oms.NewConfig()
 	if err != nil {

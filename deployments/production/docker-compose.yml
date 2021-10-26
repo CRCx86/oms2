@@ -1,0 +1,51 @@
+version: "3.7"
+
+services:
+  oms2:
+    image: ${DOCKER_REGISTRY}/zinov/oms2:${VERSION}
+    environment:
+      OMS2_ENV: prod
+      OMS2_POSTGRES_DB_USER: ${OMS2_POSTGRES_DB_PROD_USER}
+      OMS2_POSTGRES_DB_PASSWORD: ${OMS2_POSTGRES_DB_PROD_PASSWORD}
+      OMS2_POSTGRES_DB_HOST: ${OMS2_POSTGRES_DB_PROD_HOST}
+      OMS2_POSTGRES_DB_PORT: ${OMS2_POSTGRES_DB_PROD_PORT}
+      OMS2_POSTGRES_DB_NAME: ${OMS2_POSTGRES_DB_PROD_NAME}
+      OMS2_STORAGE_DB_USER: ${OMS2_STORAGE_DB_PROD_USER}
+      OMS2_STORAGE_DB_PASSWORD: ${OMS2_STORAGE_DB_PROD_PASSWORD}
+      OMS2_STORAGE_DB_HOST: ${OMS2_STORAGE_DB_PROD_HOST}
+      OMS2_STORAGE_DB_PORT: ${OMS2_STORAGE_DB_PROD_PORT}
+      OMS2_STORAGE_DB_NAME: ${OMS2_STORAGE_DB_PROD_NAME}
+      OMS2_V7_ELASTIC_URL: ${OMS2_V7_ELASTIC_PROD_URL}
+      OMS2_V7_ELASTIC_LOGIN: ${OMS2_V7_ELASTIC_PROD_LOGIN}
+      OMS2_V7_ELASTIC_PASSWORD: ${OMS2_V7_ELASTIC_PROD_PASSWORD}
+      OMS2_APISERVER_CORS_ORIGIN: ${OMS2_APISERVER_CORS_ORIGIN}
+      OMS2_APISERVER_CORS_HEADERS: ${OMS2_APISERVER_CORS_HEADERS}
+      OMS2_APP_SERVICE_BASE_URL: ${OMS2_SCHEDULE_SERVICE_PROD_URL}
+
+      JAEGER_AGENT_HOST: ${JAEGER_AGENT_PROD}
+      JAEGER_SAMPLER_TYPE: remote
+      JAEGER_SAMPLER_PARAM: 1
+      JAEGER_SERVICE_NAME: oms2
+    stop_grace_period: 1m
+    command: ["/usr/local/bin/oms2"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:8080/healthcheck"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    ports:
+      - "${OMS2_EXTERNAL_PORT}:8080"
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: ${FLUENTD_HAPROXY_HOST_PROD}:${FLUENTD_HAPROXY_PORT}
+        fluentd-async-connect: "true"
+        fluentd-retry-wait: "2s"
+        fluentd-max-retries: "60"
+        mode: non-blocking
+        tag: ${FLUENTD_TAG}.${CI_COMMIT_REF_SLUG}
+    networks:
+      - oms2
+
+networks:
+  oms2:

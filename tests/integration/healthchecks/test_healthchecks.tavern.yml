@@ -1,0 +1,11 @@
+test_name: Проверка работы healthcheck
+
+stages:
+  - name: Проверяем работу /health
+    request:
+      url: http://oms2:8080/api/health
+      method: GET
+    response:
+      status_code: 200
+      verify_response_with:
+        function: healthcheck_validators:response_should_be_ok

@@ -12,6 +12,9 @@ import (
 )
 
 func TestRepository_PrepareTestDB(t *testing.T) {
+
+	t.Skip("PrepareTestDB")
+
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 	zl := zap.L()
 	p := postgres2.NewPostgres(postgres2.Config{
@@ -33,6 +36,8 @@ func TestRepository_PrepareTestDB(t *testing.T) {
 }
 
 func TestRepository_Processing(t *testing.T) {
+
+	t.Skip("Processing")
 
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 
@@ -65,6 +70,8 @@ func TestRepository_Processing(t *testing.T) {
 
 func TestRepository_FindEventsPerStep(t *testing.T) {
 
+	t.Skip("FindEventsPerStep")
+
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 
 	zl := zap.L()
@@ -95,6 +102,9 @@ func TestRepository_FindEventsPerStep(t *testing.T) {
 }
 
 func TestRepository_RecordToNextStep(t *testing.T) {
+
+	t.Skip("RecordToNextStep")
+
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 
 	zl := zap.L()

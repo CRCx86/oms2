@@ -1,0 +1,47 @@
+version: "3.7"
+
+services:
+  oms2:
+    image: ${DOCKER_REGISTRY}/zinov/oms2:${VERSION}
+    environment:
+      OMS2_ENV: dev
+      OMS2_V7_ELASTIC_SNIFF: "true"
+      OMS2_STORAGE_DB_USER: ${OMS2_STORAGE_DB_STAGE_USER}
+      OMS2_STORAGE_DB_PASSWORD: ${OMS2_STORAGE_DB_STAGE_PASSWORD}
+      OMS2_STORAGE_DB_HOST: ${OMS2_STORAGE_DB_STAGE_HOST}
+      OMS2_STORAGE_DB_PORT: ${OMS2_STORAGE_DB_STAGE_PORT}
+      OMS2E_STORAGE_DB_NAME: ${OMS2_STORAGE_DB_STAGE_NAME}
+      OMS2_V7_ELASTIC_URL: ${OMS2_V7_ELASTIC_STAGE_URL}
+      OMS2_V7_ELASTIC_LOGIN: ${OMS2_V7_ELASTIC_STAGE_LOGIN}
+      OMS2_V7_ELASTIC_PASSWORD: ${OMS2_V7_ELASTIC_STAGE_PASSWORD}
+      OMS2_APISERVER_CORS_ORIGIN: ${OMS2_APISERVER_CORS_ORIGIN}
+      OMS2_APISERVER_CORS_HEADERS: ${OMS2_APISERVER_CORS_HEADERS}
+      OMS2_APP_SERVICE_BASE_URL: ${OMS2_SCHEDULE_SERVICE_STAGE_URL}
+
+      JAEGER_AGENT_HOST: ${JAEGER_AGENT_TEST}
+      JAEGER_SAMPLER_TYPE: remote
+      JAEGER_SAMPLER_PARAM: 1
+      JAEGER_SERVICE_NAME: oms2
+    stop_grace_period: 1m
+    command: ["/usr/local/bin/oms2"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://0.0.0.0:8080/healthcheck"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    ports:
+      - "${OMS2_EXTERNAL_PORT}:8080"
+    logging:
+      driver: "fluentd"
+      options:
+        fluentd-address: ${FLUENTD_HAPROXY_HOST_TEST}:${FLUENTD_HAPROXY_PORT}
+        fluentd-async-connect: "true"
+        fluentd-retry-wait: "2s"
+        fluentd-max-retries: "60"
+        mode: non-blocking
+        tag: ${FLUENTD_TAG}.${CI_COMMIT_REF_SLUG}
+    networks:
+      - oms2
+
+networks:
+  oms2:

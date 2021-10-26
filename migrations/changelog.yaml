@@ -1,0 +1,7 @@
+databaseChangeLog:
+  - include:
+      file: 2021-10-24-14-53-migration-initial.sql
+  - include:
+      file: 2021-10-24-14-54-_Ref_ET.sql
+  - include:
+      file: 2021-10-25-14-06-_Ref_L.sql
