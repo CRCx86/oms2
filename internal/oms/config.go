@@ -2,12 +2,12 @@ package oms
 
 import (
 	"encoding/json"
-	v7 "oms2/internal/pkg/storage/elastic/v7"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
 
 	"oms2/internal/pkg/config"
+	v7 "oms2/internal/pkg/storage/elastic/v7"
 	"oms2/internal/pkg/storage/postgres"
 )
 
