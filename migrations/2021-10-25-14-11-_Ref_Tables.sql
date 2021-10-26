@@ -1,6 +1,6 @@
 -- liquibase formatted sql
 
--- changeset zinov:2021-10-25-14-11
+-- changeset zinov:2021-10-25-14-11-1
 CREATE TABLE _Ref_E
 (
     id bigserial primary key,
@@ -14,7 +14,7 @@ INSERT INTO _Ref_E(name, event_type_id, lot_id)
 VALUES('event1', 1, 1), ('event2', 2, 2);
 -- rollback drop table _Ref_E;
 
--- changeset zinov:2021-10-25-14-11
+-- changeset zinov:2021-10-25-14-11-2
 -- comment таблица процессинга (текущий шаг)
 CREATE TABLE _InfoReg_CSR
 (
@@ -29,7 +29,7 @@ INSERT INTO _InfoReg_CSR(lot_id, node_id)
 VALUES(1, 1), (2, 1);
 -- rollback drop table _InfoReg_CSR;
 
--- changeset zinov:2021-10-25-14-11
+-- changeset zinov:2021-10-25-14-11-3
 -- comment табличная часть узла
 CREATE TABLE _RefVT_ME
 (
@@ -42,7 +42,7 @@ INSERT INTO _RefVT_ME(node_id, event_type_id)
 VALUES(3, 1), (3, 2), (4, 1);
 -- rollback drop table _RefVT_ME;
 
--- changeset zinov:2021-10-25-14-11
+-- changeset zinov:2021-10-25-14-11-4
 -- comment семафоры обработки событий, техн.
 CREATE TABLE _InfoReg_ES
 (
