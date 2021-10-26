@@ -2,6 +2,7 @@ package oms
 
 import (
 	"encoding/json"
+	v7 "oms2/internal/pkg/storage/elastic/v7"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -23,6 +24,7 @@ type Config struct {
 	APIServer          config.APIServer `envconfig:"apiserver"`
 	Storage            config.Storage   `envconfig:"storage"`
 	Postgres           postgres.Config  `envconfig:"postgres"`
+	V7Elastic          v7.Config        `envconfig:"v7_elastic"`
 	Logger             config.Logger    `envconfig:"logger"`
 	MaxCollectTime     time.Duration    `envconfig:"max_collect_time" default:"10m"`
 	MaxRobotGoroutines int              `envconfig:"max_robot_goroutines" default:"10"`

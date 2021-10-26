@@ -3,6 +3,7 @@ package app
 import (
 	"go.uber.org/fx"
 	"go.uber.org/zap"
+	v7 "oms2/internal/oms/storage/elastic/v7"
 
 	"oms2/internal/oms"
 	"oms2/internal/oms/apiserver"
@@ -43,6 +44,7 @@ func Provide(conf *oms.Config, zl *zap.Logger) fx.Option {
 			}),
 
 		postgres.Module(),
+		v7.Module(),
 		repository.Module(),
 		service.Module(),
 		apiserver.Module(),
