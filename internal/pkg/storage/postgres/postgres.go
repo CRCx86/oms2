@@ -20,11 +20,11 @@ type Postgres struct {
 }
 
 type Config struct {
-	DBUser     string `envconfig:"db_user" default:"postgres"`
-	DBPassword string `envconfig:"db_password" default:"postgres"`
+	DBUser     string `envconfig:"db_user" default:"oms2"`
+	DBPassword string `envconfig:"db_password" default:"oms2"`
 	DBHost     string `envconfig:"db_host" default:"localhost"`
 	DBPort     string `envconfig:"db_port" default:"5432"`
-	DBName     string `envconfig:"db_name" default:"oms"`
+	DBName     string `envconfig:"db_name" default:"oms2"`
 	LogLevel   string `envconfig:"log_level" default:"error"`
 }
 
