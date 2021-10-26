@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
-	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -209,7 +208,7 @@ func (s *Service) DoAsync(ctx context.Context) (int, error) {
 			if err != nil {
 				s.zl.Sugar().Info(err)
 			}
-			err = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+			// err = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 		}(items)
 	}
 
