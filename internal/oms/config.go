@@ -10,9 +10,9 @@ import (
 	"oms2/internal/pkg/storage/postgres"
 )
 
-const CoreEnvironmentPrefix = "OMS"
+const CoreEnvironmentPrefix = "OMS2"
 
-//const EnvDev = "dev"
+const EnvDev = "dev"
 
 type Config struct {
 	Env                string           `envconfig:"env"`
