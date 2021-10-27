@@ -2,16 +2,4 @@ databaseChangeLog:
   - include:
       file: 2021-10-24-14-53-migration-initial.sql
   - include:
-      file: 2021-10-24-14-54-_Ref_ET.sql
-  - include:
-      file: 2021-10-25-14-05-_Ref_O.sql
-  - include:
-      file: 2021-10-25-14-06-_Ref_D.sql
-  - include:
-      file: 2021-10-25-14-07-_Ref_S.sql
-  - include:
-      file: 2021-10-25-14-08-_Ref_L.sql
-  - include:
-      file: 2021-10-25-14-09-_Ref_M.sql
-  - include:
-      file: 2021-10-25-14-10-_Ref_Tables.sql
+      file: 2021-10-25-14-10-_init_ref_tables.sql
