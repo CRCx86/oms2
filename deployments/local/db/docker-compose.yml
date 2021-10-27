@@ -17,6 +17,22 @@ services:
     networks:
       - oms2
 
+  esv701:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.5.2
+    environment:
+      - node.name=esv701
+      - bootstrap.memory_lock=true
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9700:9200"
+    networks:
+      - oms2
+
   liquibase:
     image: ${DOCKER_LIQUIBASE_IMAGE}:${VERSION}
     command: [ "liquibase", "updateTestingRollback" ]

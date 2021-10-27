@@ -68,10 +68,7 @@ dcgraydown:: ## Graylog docker-compose down
 
 .PHONY: dbup
 dbup:: liquibase-docker ## Local Postgres docker-compose up
-	DOCKER_IMAGE=${DOCKER_IMAGE} DOCKER_LIQUIBASE_IMAGE=${DOCKER_LIQUIBASE_IMAGE} VERSION=${DOCKER_TAG} docker-compose -p ${BINARY_NAME} -f ./deployments/local/docker-compose.yml up -d --build db liquibase
-
-	## Postgres docker-compose up
-	##DOCKER_IMAGE=${DOCKER_IMAGE} VERSION=${DOCKER_TAG} docker-compose -p ${BINARY_NAME} -f ./deployments/local/db/docker-compose.yml up -d --build db
+	DOCKER_IMAGE=${DOCKER_IMAGE} DOCKER_LIQUIBASE_IMAGE=${DOCKER_LIQUIBASE_IMAGE} VERSION=${DOCKER_TAG} docker-compose -p ${BINARY_NAME} -f ./deployments/local/docker-compose.yml up -d --build db esv701 liquibase
 
 .PHONY: dbdown
 dbdown:: ## Postgres docker-compose down
