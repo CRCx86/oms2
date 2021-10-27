@@ -22,7 +22,9 @@ CREATE TABLE _InfoReg_CSR
     lot_id    int REFERENCES _Ref_L (id) ON UPDATE CASCADE ON DELETE CASCADE,
     node_id 	int REFERENCES _Ref_M (id) ON UPDATE CASCADE,
     thread	int NOT NULL DEFAULT 1,
+    weight int not null default 0,
     entry_time timestamp WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    next_run_time timestamp WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT _InfoReg_CSR_pkey PRIMARY KEY (lot_id, node_id)
 );
 INSERT INTO _InfoReg_CSR(lot_id, node_id)
@@ -50,6 +52,7 @@ CREATE TABLE _InfoReg_ES
     lot_id    int REFERENCES _Ref_L (id) ON UPDATE CASCADE ON DELETE CASCADE,
     semaphore_id int REFERENCES _Ref_ET (id) ON UPDATE CASCADE,
     event_id  int REFERENCES _Ref_E (id),
+    entry_time timestamp WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT _InfoReg_ES_pkey PRIMARY KEY (lot_id, semaphore_id)
 );
 INSERT INTO _InfoReg_ES(lot_id, semaphore_id, event_id)

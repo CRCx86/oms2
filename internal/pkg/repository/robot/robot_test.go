@@ -63,7 +63,7 @@ func TestRepository_Processing(t *testing.T) {
 	rootRepo := root.NewRepository(p, zl)
 
 	robotRepo := NewRepository(p, rootRepo, zl)
-	processing, err := robotRepo.Processing(ctx)
+	processing, err := robotRepo.Processing(ctx, nil)
 	require.NoError(t, err)
 	require.Greater(t, len(processing), 1)
 }

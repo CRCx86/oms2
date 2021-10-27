@@ -144,11 +144,6 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 
 func (s *Service) DoStep(ctx context.Context) (ok error) {
 
-	if ok != nil {
-		s.zl.Sugar().Error(ok)
-		return ok
-	}
-
 	if s.cfg.MaxRobotGoroutines == 0 {
 		ok := s.DoStepAndEvents(ctx, nil)
 		if ok != nil {
@@ -166,17 +161,19 @@ func (s *Service) DoStep(ctx context.Context) (ok error) {
 
 func (s *Service) DoAsync(ctx context.Context) (int, error) {
 
-	// TODO: это непосредственно шаг лота
-	// переписать на текущий шаг маршрута и семафоры
-	processing, ok := s.robotRepository.Processing(ctx)
+	lotsOrdersNoGroup, ok := s.robotRepository.GetOrderByLotsFromProcessingRegister(ctx)
+
+	lotsOrderGroup := make(map[interface{}][]map[string]interface{})
+	for _, item := range lotsOrdersNoGroup {
+		lotsOrderGroup[item["order_id"]] = append(lotsOrderGroup[item["order_id"]], item)
+	}
 
 	cursor := -1
 	limit := s.cfg.MaxRobotGoroutines - 1
 
-	var lotsByStream [][]map[string]interface{}
+	lotsByStream := make([][]map[string]interface{}, 0)
 
-	lots := make([]map[string]interface{}, 0)
-	for _, item := range processing {
+	for _, value := range lotsOrderGroup {
 
 		if cursor == limit {
 			cursor = 0
@@ -185,18 +182,17 @@ func (s *Service) DoAsync(ctx context.Context) (int, error) {
 		}
 
 		if len(lotsByStream) <= cursor {
-			lots = make([]map[string]interface{}, 0)
-			if len(lotsByStream) > 0 {
-				lotsByStream = append(lotsByStream, lots) // TODO: убрать
+			lotsByStream = append(lotsByStream, make([]map[string]interface{}, 0))
+		}
+
+		for _, item := range value {
+			if item["thread"].(int32) >= 900 {
+
+			} else {
+				lotsByStream[cursor] = append(lotsByStream[cursor], item)
 			}
 		}
 
-		lots = append(lots, item)
-
-	}
-
-	if len(lots) > 0 {
-		lotsByStream = append(lotsByStream, lots) // TODO: убрать
 	}
 
 	var wg sync.WaitGroup
@@ -208,7 +204,6 @@ func (s *Service) DoAsync(ctx context.Context) (int, error) {
 			if err != nil {
 				s.zl.Sugar().Info(err)
 			}
-			// err = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 		}(items)
 	}
 
@@ -259,7 +254,12 @@ func (s *Service) RecordToNextStep(ctx context.Context, data map[string]interfac
 
 func (s *Service) DoNextStep(ctx context.Context, lots []map[string]interface{}) (ok error) {
 
-	for _, lot := range lots {
+	results, ok := s.robotRepository.Processing(ctx, lots)
+	if ok != nil {
+		return ok
+	}
+
+	for _, lot := range results {
 		ok = s.DoNextStepQuery(ctx, lot)
 	}
 
