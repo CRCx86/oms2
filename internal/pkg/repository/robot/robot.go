@@ -183,6 +183,58 @@ func (r *Repository) UpdateProcessing(ctx context.Context, data map[string]inter
 	return r.RootRepository.CreateOrUpdate(ctx, _sql, args...)
 }
 
+func (r *Repository) UpdateProcessingActivity(ctx context.Context, data []map[string]interface{}, threadKey string) (uint, error) {
+
+	var _sql string
+	var args []interface{}
+	var err error
+
+	if len(threadKey) == 0 {
+
+		insertQuery := squirrel.
+			StatementBuilder.
+			PlaceholderFormat(squirrel.Dollar).
+			Insert("_InfoReg_PA")
+
+		for _, item := range data {
+			insertQuery = insertQuery.
+				SetMap(item)
+		}
+
+		_sql, args, err = insertQuery.Suffix("RETURNING id").ToSql()
+
+		if err != nil {
+			r.zl.Sugar().Error(err)
+			return 0, err
+		}
+
+	} else {
+
+		updateQuery := squirrel.
+			StatementBuilder.
+			PlaceholderFormat(squirrel.Dollar).
+			Update("_InfoReg_PA")
+
+		for _, item := range data {
+			updateQuery = updateQuery.
+				SetMap(item)
+		}
+
+		_sql, args, err = updateQuery.
+			Where(squirrel.Eq{"id": threadKey}).
+			Suffix("RETURNING id").
+			ToSql()
+
+		if err != nil {
+			r.zl.Sugar().Error(err)
+			return 0, err
+		}
+
+	}
+
+	return r.RootRepository.CreateOrUpdate(ctx, _sql, args...)
+}
+
 func (r *Repository) GetOrderByLotsFromProcessingRegister(ctx context.Context) ([]map[string]interface{}, error) {
 
 	_sql := `select
@@ -221,4 +273,82 @@ func (r *Repository) GetOrderByLotsFromProcessingRegister(ctx context.Context) (
 	args = append(args, time.Now().Add(-24*time.Hour))
 
 	return r.RootRepository.Get(ctx, _sql, args...)
+}
+
+func (r *Repository) GetRegisterActivityList(ctx context.Context) ([]map[string]interface{}, error) {
+
+	_sql, args, err := squirrel.
+		StatementBuilder.
+		PlaceholderFormat(squirrel.Dollar).
+		Select("pa.thread_key, pa.thread_id, pa.group_id, max(pa.start_time) as start_time").
+		From("_InfoReg_PA as pa").
+		GroupBy("thread_key, thread_id, group_id, start_time").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	return r.RootRepository.Get(ctx, _sql, args...)
+
+}
+
+func (r *Repository) GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx context.Context) ([]map[string]interface{}, error) {
+
+	_sql := `select
+				inner_query.lot_id as lot_id,
+				lots.order_id as order_id,
+				inner_query.thread as thread,
+				sum(inner_query.weight) as weight
+			from (select
+				   csr.lot_id as lot_id,
+				   csr.weight as weight,
+				   case when csr.thread >= 900 then csr.thread else 0 end as thread
+			from _inforeg_csr as csr
+			where csr.next_run_time <= $1
+			union
+			select
+				   es.lot_id,
+				   max(5000),
+				   max(0)
+			from _inforeg_es as es
+				inner join _inforeg_csr ic on es.lot_id = ic.lot_id
+				inner join _refvt_me rme on ic.node_id = rme.node_id
+					and rme.event_type_id = es.semaphore_id
+			where es.entry_time >= $2
+			group by
+				es.lot_id) as inner_query
+			
+			left join _ref_l as lots on inner_query.lot_id = lots.id
+			left join _inforeg_pa as pa on lots.order_id = pa.order_id
+
+			where pa.order_id is null
+
+			group by
+				inner_query.lot_id,
+				lots.order_id,
+				inner_query.thread
+			order by weight desc`
+
+	var args []interface{}
+	args = append(args, time.Now())
+	args = append(args, time.Now().Add(-24*time.Hour))
+
+	return r.RootRepository.Get(ctx, _sql, args...)
+}
+
+func (r *Repository) DeleteFromRegisterActivityByThreadId(ctx context.Context, uid string) error {
+
+	_sql, args, err := squirrel.
+		StatementBuilder.
+		PlaceholderFormat(squirrel.Dollar).
+		Delete("_InfoReg_PA").
+		Where(squirrel.Eq{"thread_key": uid}).
+		ToSql()
+
+	if err != nil {
+		return err
+	}
+
+	return r.RootRepository.Delete(ctx, _sql, args...)
+
 }

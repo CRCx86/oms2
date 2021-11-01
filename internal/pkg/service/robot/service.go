@@ -3,6 +3,7 @@ package robot
 import (
 	"context"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
 	"os"
 	"os/signal"
 	"reflect"
@@ -38,6 +39,12 @@ type Service struct {
 
 	robotRepository *robot.Repository
 	wg              sync.WaitGroup
+
+	managers map[string]chan int
+
+	robotCh chan bool
+
+	running bool
 }
 
 func NewService(cfg *oms.Config, action *Action, r *robot.Repository, zl *zap.Logger) *Service {
@@ -46,9 +53,11 @@ func NewService(cfg *oms.Config, action *Action, r *robot.Repository, zl *zap.Lo
 		cfg:             cfg,
 		ticker:          time.NewTicker(1 * time.Second),
 		done:            make(chan bool),
-		model:           IterationModel,
+		model:           TilingModel,
 		action:          action,
 		robotRepository: r,
+		managers:        make(map[string]chan int),
+		robotCh:         make(chan bool),
 	}
 }
 
@@ -62,32 +71,49 @@ func (s *Service) Start(ctx context.Context) error {
 
 		defer s.wg.Done()
 
+		s.running = true
+
 		for {
+
 			select {
-			case <-s.done:
-				s.ticker.Stop()
-				return
+			case res := <-s.done:
+				if res {
+					close(s.robotCh)
+					s.ticker.Stop()
+					return
+				}
 			case t := <-s.ticker.C:
 				c, cancel := context.WithTimeout(context.Background(), s.cfg.MaxCollectTime)
 				err := s.Do(c, t)
 				if err != nil {
 					s.ticker.Stop()
 					s.done <- true
+					close(s.done)
 					s.zl.Sugar().Error(err)
 					cancel()
+					return
 				}
 				cancel()
+			default:
+
 			}
+
 		}
 	}()
 
 	go func() {
 		select {
 		case <-ctx.Done():
+			s.robotCh <- true
+			s.done <- true
+			close(s.done)
 			return
 		case sig := <-signals:
 			s.zl.Sugar().Info(fmt.Sprintf("Got %s signals. Aborting...", sig))
+			s.robotCh <- true
 			s.done <- true
+			close(s.done)
+			return
 		}
 	}()
 
@@ -111,8 +137,10 @@ func (s *Service) Do(ctx context.Context, t time.Time) (err error) {
 
 	switch s.model {
 	case TilingModel:
+		if !s.running {
+			break
+		}
 		err = s.Tiling(ctx, t)
-
 	case IterationModel:
 		err = s.Iteration(ctx, t)
 
@@ -137,9 +165,115 @@ func (s *Service) Iteration(ctx context.Context, t time.Time) (ok error) {
 
 func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 
-	// TODO: designed
+	for {
 
-	return nil
+		if !s.running {
+			break
+		}
+
+		select {
+		case res := <-s.robotCh:
+			if res {
+				s.running = !res
+				return ok
+			}
+		default:
+
+		}
+
+		paramsManager := make(map[string]interface{}, 0)
+		paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines
+
+		registerActivityList, ok := s.robotRepository.GetRegisterActivityList(ctx)
+		if ok != nil {
+			return ok
+		}
+
+		if len(registerActivityList) < s.cfg.MaxRobotGoroutines && len(s.managers) == 0 {
+
+			if len(registerActivityList) > 0 {
+				paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines - len(registerActivityList) - 1
+			}
+
+			uid := uuid.NewV4().String()
+			manager := make(chan int) // канал для менеджера потоков
+
+			s.managers[uid] = manager
+			go s.TilingThreadManager(ctx, uid, manager, paramsManager)
+		}
+
+		receivers := len(s.managers)
+		s.zl.Sugar().Info("running managers: ", receivers)
+
+		for _, data := range s.managers {
+			go func(ch chan int) {
+				select {
+				case item := <-ch:
+					s.zl.Sugar().Info("manager data: ", item)
+				default:
+				}
+			}(data)
+		}
+
+		//time.Sleep(1 * time.Second)
+	}
+
+	s.zl.Sugar().Info("Robot at", t)
+
+	return ok
+}
+
+func (s *Service) TilingThreadManager(ctx context.Context, uid string, manager chan int, params map[string]interface{}) {
+
+	defer func() {
+		s.zl.Sugar().Info("Delete thread: ", uid)
+		delete(s.managers, uid)
+		defer close(manager)
+	}()
+
+	lotsOrdersNoGroup, ok := s.robotRepository.GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx)
+	if ok != nil {
+		return
+	}
+	lotsByStream, count := s.DivideLotsByOrders(lotsOrdersNoGroup, params)
+	for _, items := range lotsByStream {
+
+		uid := uuid.NewV4().String()
+
+		activity := make(map[int32]map[string]interface{}, 0)
+		for _, item := range items {
+			order := item["order_id"].(int32)
+			if activity[order] == nil {
+				itemMap := make(map[string]interface{})
+				itemMap["order_id"] = item["order_id"]
+				itemMap["thread_key"] = uid
+				itemMap["start_time"] = time.Now()
+				itemMap["thread_id"] = uid
+				itemMap["group_id"] = -1
+				activity[order] = itemMap
+			}
+		}
+
+		activityData := make([]map[string]interface{}, 0)
+		for _, v := range activity {
+			activityData = append(activityData, v)
+		}
+		_, ok := s.robotRepository.UpdateProcessingActivity(ctx, activityData, "")
+		if ok != nil {
+			s.zl.Sugar().Info(ok)
+			return
+		}
+
+		go func(data []map[string]interface{}, uid string) {
+			err := s.ShardDoStepAndEvents(ctx, data, uid)
+			if err != nil {
+				s.zl.Sugar().Info(err)
+			}
+		}(items, uid)
+	}
+
+	manager <- count
+
 }
 
 func (s *Service) DoStep(ctx context.Context) (ok error) {
@@ -162,41 +296,27 @@ func (s *Service) DoStep(ctx context.Context) (ok error) {
 func (s *Service) DoAsync(ctx context.Context) (int, error) {
 
 	lotsOrdersNoGroup, ok := s.robotRepository.GetOrderByLotsFromProcessingRegister(ctx)
-
-	lotsOrderGroup := make(map[interface{}][]map[string]interface{})
-	for _, item := range lotsOrdersNoGroup {
-		lotsOrderGroup[item["order_id"]] = append(lotsOrderGroup[item["order_id"]], item)
+	if ok != nil {
+		return 0, ok
 	}
 
-	cursor := -1
-	limit := s.cfg.MaxRobotGoroutines - 1
+	paramsManager := make(map[string]interface{}, 0)
+	paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines
 
-	lotsByStream := make([][]map[string]interface{}, 0)
-
-	for _, value := range lotsOrderGroup {
-
-		if cursor == limit {
-			cursor = 0
-		} else {
-			cursor += 1
-		}
-
-		if len(lotsByStream) <= cursor {
-			lotsByStream = append(lotsByStream, make([]map[string]interface{}, 0))
-		}
-
-		for _, item := range value {
-			if item["thread"].(int32) >= 900 {
-
-			} else {
-				lotsByStream[cursor] = append(lotsByStream[cursor], item)
-			}
-		}
-
-	}
+	lotsByStream, count := s.DivideLotsByOrders(lotsOrdersNoGroup, paramsManager)
 
 	var wg sync.WaitGroup
 	for _, items := range lotsByStream {
+
+		select {
+		case res := <-s.robotCh:
+			s.zl.Sugar().Info(fmt.Sprintf("RES %t signals. Aborting...", res))
+			if res {
+				return 0, ok
+			}
+		default:
+		}
+
 		wg.Add(1)
 		go func(data []map[string]interface{}) {
 			defer wg.Done()
@@ -209,7 +329,19 @@ func (s *Service) DoAsync(ctx context.Context) (int, error) {
 
 	wg.Wait()
 
-	return 0, ok
+	return count, ok
+}
+
+func (s *Service) ShardDoStepAndEvents(ctx context.Context, data []map[string]interface{}, uid string) (result error) {
+
+	result = s.DoStepAndEvents(ctx, data)
+	if result != nil {
+		return result
+	}
+
+	result = s.robotRepository.DeleteFromRegisterActivityByThreadId(ctx, uid)
+
+	return result
 }
 
 func (s *Service) DoStepAndEvents(ctx context.Context, lots []map[string]interface{}) (result error) {
@@ -374,4 +506,42 @@ func (s *Service) InvokeAction(ctx context.Context, name string, data map[string
 	}
 
 	return nil
+}
+
+func (s *Service) DivideLotsByOrders(lotsOrdersNoGroup []map[string]interface{}, params map[string]interface{}) ([][]map[string]interface{}, int) {
+
+	lotsByStream := make([][]map[string]interface{}, 0)
+
+	lotsOrderGroup := make(map[interface{}][]map[string]interface{})
+	for _, item := range lotsOrdersNoGroup {
+		lotsOrderGroup[item["order_id"]] = append(lotsOrderGroup[item["order_id"]], item)
+	}
+
+	cursor := -1
+	limit := params["cursorUpper"].(int) - 1
+
+	count := 0
+	for _, value := range lotsOrderGroup {
+
+		if cursor == limit {
+			cursor = 0
+		} else {
+			cursor += 1
+		}
+
+		if len(lotsByStream) <= cursor {
+			lotsByStream = append(lotsByStream, make([]map[string]interface{}, 0))
+		}
+
+		for _, item := range value {
+			if item["thread"].(int32) >= 900 {
+
+			} else {
+				lotsByStream[cursor] = append(lotsByStream[cursor], item)
+			}
+			count += 1
+		}
+
+	}
+	return lotsByStream, count
 }

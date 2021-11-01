@@ -135,3 +135,17 @@ CREATE TABLE _InfoReg_ES
 INSERT INTO _InfoReg_ES(lot_id, semaphore_id, event_id)
 VALUES(1, 1, 1), (2, 2, 2);
 -- rollback drop table _InfoReg_ES;
+
+-- changeset zinov:2021-10-25-14-11-5
+-- comment активность процессинга
+CREATE TABLE _InfoReg_PA
+(
+    id          bigserial,
+    order_id    int REFERENCES _Ref_O (id) ON UPDATE CASCADE ON DELETE CASCADE,
+    thread_key  varchar NOT NULL,
+    start_time  timestamp WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    thread_id   varchar NOT NULL,
+    group_id    int not null,
+    CONSTRAINT  _InfoReg_PA_pkey PRIMARY KEY (order_id, thread_key)
+);
+-- rollback drop table _InfoReg_PA;

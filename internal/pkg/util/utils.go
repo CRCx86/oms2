@@ -2,7 +2,11 @@ package util
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/jackc/pgx/v4"
+	"runtime"
+	"strconv"
+	"strings"
 )
 
 func ParseRowQuery(rows pgx.Rows) ([]map[string]interface{}, error) {
@@ -49,4 +53,15 @@ func ToEntity(data []map[string]interface{}, entity interface{}) error {
 		return err
 	}
 	return nil
+}
+
+func GetGoroutineId() int {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
+	id, err := strconv.Atoi(idField)
+	if err != nil {
+		panic(fmt.Sprintf("cannot get goroutine id: %v", err))
+	}
+	return id
 }
