@@ -29,9 +29,11 @@ const (
 )
 
 type Service struct {
-	zl     *zap.Logger
-	cfg    *oms.Config
-	ticker *time.Ticker
+	zl  *zap.Logger
+	cfg *oms.Config
+
+	ticker         *time.Ticker
+	restartTimeOut time.Duration
 
 	done   chan bool
 	model  string
@@ -41,10 +43,8 @@ type Service struct {
 	wg              sync.WaitGroup
 
 	managers map[string]chan int
-
-	robotCh chan bool
-
-	running bool
+	robotCh  chan bool
+	running  bool
 }
 
 func NewService(cfg *oms.Config, action *Action, r *robot.Repository, zl *zap.Logger) *Service {
@@ -52,6 +52,7 @@ func NewService(cfg *oms.Config, action *Action, r *robot.Repository, zl *zap.Lo
 		zl:              zl,
 		cfg:             cfg,
 		ticker:          time.NewTicker(1 * time.Second),
+		restartTimeOut:  5 * time.Second,
 		done:            make(chan bool),
 		model:           TilingModel,
 		action:          action,
@@ -104,7 +105,7 @@ func (s *Service) Start(ctx context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
-			s.robotCh <- true
+			//s.robotCh <- true
 			s.done <- true
 			close(s.done)
 			return
@@ -163,119 +164,7 @@ func (s *Service) Iteration(ctx context.Context, t time.Time) (ok error) {
 	return ok
 }
 
-func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
-
-	for {
-
-		if !s.running {
-			break
-		}
-
-		select {
-		case res := <-s.robotCh:
-			if res {
-				s.running = !res
-				return ok
-			}
-		default:
-
-		}
-
-		paramsManager := make(map[string]interface{}, 0)
-		paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines
-
-		registerActivityList, ok := s.robotRepository.GetRegisterActivityList(ctx)
-		if ok != nil {
-			return ok
-		}
-
-		if len(registerActivityList) < s.cfg.MaxRobotGoroutines && len(s.managers) == 0 {
-
-			if len(registerActivityList) > 0 {
-				paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines - len(registerActivityList) - 1
-			}
-
-			uid := uuid.NewV4().String()
-			manager := make(chan int) // канал для менеджера потоков
-
-			s.managers[uid] = manager
-			go s.TilingThreadManager(ctx, uid, manager, paramsManager)
-		}
-
-		receivers := len(s.managers)
-		s.zl.Sugar().Info("running managers: ", receivers)
-
-		for _, data := range s.managers {
-			go func(ch chan int) {
-				select {
-				case item := <-ch:
-					s.zl.Sugar().Info("manager data: ", item)
-				default:
-				}
-			}(data)
-		}
-
-		//time.Sleep(1 * time.Second)
-	}
-
-	s.zl.Sugar().Info("Robot at", t)
-
-	return ok
-}
-
-func (s *Service) TilingThreadManager(ctx context.Context, uid string, manager chan int, params map[string]interface{}) {
-
-	defer func() {
-		s.zl.Sugar().Info("Delete thread: ", uid)
-		delete(s.managers, uid)
-		defer close(manager)
-	}()
-
-	lotsOrdersNoGroup, ok := s.robotRepository.GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx)
-	if ok != nil {
-		return
-	}
-	lotsByStream, count := s.DivideLotsByOrders(lotsOrdersNoGroup, params)
-	for _, items := range lotsByStream {
-
-		uid := uuid.NewV4().String()
-
-		activity := make(map[int32]map[string]interface{}, 0)
-		for _, item := range items {
-			order := item["order_id"].(int32)
-			if activity[order] == nil {
-				itemMap := make(map[string]interface{})
-				itemMap["order_id"] = item["order_id"]
-				itemMap["thread_key"] = uid
-				itemMap["start_time"] = time.Now()
-				itemMap["thread_id"] = uid
-				itemMap["group_id"] = -1
-				activity[order] = itemMap
-			}
-		}
-
-		activityData := make([]map[string]interface{}, 0)
-		for _, v := range activity {
-			activityData = append(activityData, v)
-		}
-		_, ok := s.robotRepository.UpdateProcessingActivity(ctx, activityData, "")
-		if ok != nil {
-			s.zl.Sugar().Info(ok)
-			return
-		}
-
-		go func(data []map[string]interface{}, uid string) {
-			err := s.ShardDoStepAndEvents(ctx, data, uid)
-			if err != nil {
-				s.zl.Sugar().Info(err)
-			}
-		}(items, uid)
-	}
-
-	manager <- count
-
-}
-
+// DoStep Iteration model
 func (s *Service) DoStep(ctx context.Context) (ok error) {
 
 	if s.cfg.MaxRobotGoroutines == 0 {
@@ -332,7 +221,128 @@ func (s *Service) DoAsync(ctx context.Context) (int, error) {
 	return count, ok
 }
 
-func (s *Service) ShardDoStepAndEvents(ctx context.Context, data []map[string]interface{}, uid string) (result error) {
+// Tiling tiling model
+func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
+
+	s.zl.Sugar().Info("Start Tiling manager: ", t)
+	startTime := time.Now()
+
+	currentProcessDuration := 0
+	for {
+
+		select {
+		case res := <-s.robotCh:
+			if res {
+				s.running = !res
+				return ok
+			}
+		default:
+
+		}
+
+		isContinue := s.running && (currentProcessDuration < int(s.restartTimeOut.Seconds()))
+		if !isContinue {
+			break
+		}
+
+		paramsManager := make(map[string]interface{}, 0)
+		paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines
+
+		registerActivityList, ok := s.robotRepository.GetRegisterActivityList(ctx)
+		if ok != nil {
+			return ok
+		}
+
+		if len(registerActivityList) < s.cfg.MaxRobotGoroutines && len(s.managers) == 0 {
+
+			if len(registerActivityList) > 0 {
+				paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines - len(registerActivityList) - 1
+			}
+
+			uid := uuid.NewV4().String()
+			manager := make(chan int) // канал для менеджера потоков
+
+			s.managers[uid] = manager
+			go s.TilingThreadManager(ctx, uid, manager, paramsManager)
+
+			//receivers := len(s.managers)
+			//s.zl.Sugar().Info("running managers: ", receivers)
+
+		}
+
+		for _, data := range s.managers {
+			go func(ch chan int) {
+				select {
+				case item := <-ch:
+					s.zl.Sugar().Info("manager data: ", item)
+				default:
+				}
+			}(data)
+		}
+
+		currentProcessDuration = time.Now().Second() - startTime.Second()
+	}
+
+	s.zl.Sugar().Info("End Tiling manager: ", time.Now().Sub(t))
+
+	return ok
+}
+
+func (s *Service) TilingThreadManager(ctx context.Context, uid string, manager chan int, params map[string]interface{}) {
+
+	defer func() {
+		//s.zl.Sugar().Info("Delete thread: ", uid)
+		delete(s.managers, uid)
+		defer close(manager)
+	}()
+
+	lotsOrdersNoGroup, ok := s.robotRepository.GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx)
+	if ok != nil {
+		s.zl.Sugar().Info(ok)
+		return
+	}
+	lotsByStream, count := s.DivideLotsByOrders(lotsOrdersNoGroup, params)
+	for _, items := range lotsByStream {
+
+		uid := uuid.NewV4().String()
+
+		activity := make(map[int32]map[string]interface{}, 0)
+		for _, item := range items {
+			order := item["order_id"].(int32)
+			if activity[order] == nil {
+				itemMap := make(map[string]interface{})
+				itemMap["order_id"] = item["order_id"]
+				itemMap["thread_key"] = uid
+				itemMap["start_time"] = time.Now()
+				itemMap["thread_id"] = uid
+				itemMap["group_id"] = -1
+				activity[order] = itemMap
+			}
+		}
+
+		activityData := make([]map[string]interface{}, 0)
+		for _, v := range activity {
+			activityData = append(activityData, v)
+		}
+		_, ok := s.robotRepository.UpdateProcessingActivity(ctx, activityData, "")
+		if ok != nil {
+			s.zl.Sugar().Info(ok)
+			return
+		}
+
+		go func(data []map[string]interface{}, uid string) {
+			err := s.Shard_DoStepAndEvents(ctx, data, uid)
+			if err != nil {
+				s.zl.Sugar().Info(err)
+			}
+		}(items, uid)
+	}
+
+	manager <- count
+
+}
+
+func (s *Service) Shard_DoStepAndEvents(ctx context.Context, data []map[string]interface{}, uid string) (result error) {
 
 	result = s.DoStepAndEvents(ctx, data)
 	if result != nil {
