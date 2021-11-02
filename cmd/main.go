@@ -1,8 +1,9 @@
 package main
 
 import (
-	"go.uber.org/fx"
 	"os"
+
+	"go.uber.org/fx"
 
 	"oms2/internal/oms"
 	"oms2/internal/oms/app"

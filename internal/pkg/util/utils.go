@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v4"
+	"oms2/internal/oms"
 	"runtime"
 	"strconv"
 	"strings"
@@ -40,6 +41,23 @@ func ParseRowQuery(rows pgx.Rows) ([]map[string]interface{}, error) {
 		objects = append(objects, object)
 	}
 	return objects, nil
+}
+
+func EmptyDataStruct() (data map[string]interface{}) {
+	data = make(map[string]interface{})
+	data["lot_id"] = ""
+	data["node_id"] = ""
+
+	return data
+}
+
+func MessageToExternalLog(data map[string]interface{}, Type string, Description string) oms.LogMessage {
+	return oms.LogMessage{
+		Name:        data["lot_id"].(string),
+		Node:        data["node_id"].(string),
+		Description: Description,
+		Type:        Type,
+	}
 }
 
 func ToEntity(data []map[string]interface{}, entity interface{}) error {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	uuid "github.com/satori/go.uuid"
+	v7 "oms2/internal/pkg/storage/elastic/v7"
+	"oms2/internal/pkg/util"
 	"os"
 	"os/signal"
 	"reflect"
@@ -35,28 +37,30 @@ type Service struct {
 	ticker         *time.Ticker
 	restartTimeOut time.Duration
 
-	done   chan bool
-	model  string
-	action *Action
+	done  chan bool
+	model string
+	wg    sync.WaitGroup
 
+	action          *Action
 	robotRepository *robot.Repository
-	wg              sync.WaitGroup
+	storage         *v7.Elastic
 
 	managers map[string]chan int
 	robotCh  chan bool
 	running  bool
 }
 
-func NewService(cfg *oms.Config, action *Action, r *robot.Repository, zl *zap.Logger) *Service {
+func NewService(cfg *oms.Config, action *Action, r *robot.Repository, storage *v7.Elastic, zl *zap.Logger) *Service {
 	return &Service{
 		zl:              zl,
 		cfg:             cfg,
 		ticker:          time.NewTicker(1 * time.Second),
-		restartTimeOut:  5 * time.Second,
+		restartTimeOut:  10 * time.Second,
 		done:            make(chan bool),
 		model:           TilingModel,
 		action:          action,
 		robotRepository: r,
+		storage:         storage,
 		managers:        make(map[string]chan int),
 		robotCh:         make(chan bool),
 	}
@@ -110,7 +114,19 @@ func (s *Service) Start(ctx context.Context) error {
 			close(s.done)
 			return
 		case sig := <-signals:
-			s.zl.Sugar().Info(fmt.Sprintf("Got %s signals. Aborting...", sig))
+			message := fmt.Sprintf("Got %s signals. Aborting...", sig)
+			s.zl.Sugar().Info(message)
+			_, err := s.storage.Create(ctx,
+				util.MessageToExternalLog(
+					util.EmptyDataStruct(),
+					v7.SystemMessage,
+					message),
+				"",
+				v7.SystemIndex)
+			if err != nil {
+				s.zl.Sugar().Info(err)
+			}
+
 			s.robotCh <- true
 			s.done <- true
 			close(s.done)
@@ -118,7 +134,18 @@ func (s *Service) Start(ctx context.Context) error {
 		}
 	}()
 
-	s.zl.Sugar().Info("Robot has started")
+	message := fmt.Sprintf("Robot has started")
+	s.zl.Sugar().Info(message)
+	_, err := s.storage.Create(ctx,
+		util.MessageToExternalLog(
+			util.EmptyDataStruct(),
+			v7.SystemMessage,
+			message),
+		"",
+		v7.SystemIndex)
+	if err != nil {
+		s.zl.Sugar().Info(err)
+	}
 
 	return nil
 
@@ -190,7 +217,7 @@ func (s *Service) DoAsync(ctx context.Context) (int, error) {
 	}
 
 	paramsManager := make(map[string]interface{}, 0)
-	paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines
+	paramsManager["cursor"] = s.cfg.MaxRobotGoroutines
 
 	lotsByStream, count := s.DivideLotsByOrders(lotsOrdersNoGroup, paramsManager)
 
@@ -224,7 +251,19 @@ func (s *Service) DoAsync(ctx context.Context) (int, error) {
 // Tiling tiling model
 func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 
-	s.zl.Sugar().Info("Start Tiling manager: ", t)
+	message := fmt.Sprintf("Start Tiling manager: %s", t.String())
+	s.zl.Sugar().Info(message)
+	_, err := s.storage.Create(ctx,
+		util.MessageToExternalLog(
+			util.EmptyDataStruct(),
+			v7.SystemMessage,
+			message),
+		"",
+		v7.SystemIndex)
+	if err != nil {
+		s.zl.Sugar().Info(err)
+	}
+
 	startTime := time.Now()
 
 	currentProcessDuration := 0
@@ -246,7 +285,7 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 		}
 
 		paramsManager := make(map[string]interface{}, 0)
-		paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines
+		paramsManager["cursor"] = s.cfg.MaxRobotGoroutines
 
 		registerActivityList, ok := s.robotRepository.GetRegisterActivityList(ctx)
 		if ok != nil {
@@ -256,7 +295,7 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 		if len(registerActivityList) < s.cfg.MaxRobotGoroutines && len(s.managers) == 0 {
 
 			if len(registerActivityList) > 0 {
-				paramsManager["cursorUpper"] = s.cfg.MaxRobotGoroutines - len(registerActivityList) - 1
+				paramsManager["cursor"] = s.cfg.MaxRobotGoroutines - len(registerActivityList) - 1
 			}
 
 			uid := uuid.NewV4().String()
@@ -280,10 +319,23 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 			}(data)
 		}
 
+		time.Sleep(1 * time.Second)
+
 		currentProcessDuration = time.Now().Second() - startTime.Second()
 	}
 
-	s.zl.Sugar().Info("End Tiling manager: ", time.Now().Sub(t))
+	message = fmt.Sprintf("End Tiling manager: %s", time.Now().Sub(t).String())
+	s.zl.Sugar().Info(message)
+	_, err = s.storage.Create(ctx,
+		util.MessageToExternalLog(
+			util.EmptyDataStruct(),
+			v7.SystemMessage,
+			message),
+		"",
+		v7.SystemIndex)
+	if err != nil {
+		s.zl.Sugar().Info(err)
+	}
 
 	return ok
 }
@@ -385,8 +437,8 @@ func (s *Service) DoIncomingEvents(ctx context.Context, lots []map[string]interf
 
 func (s *Service) RecordToNextStep(ctx context.Context, data map[string]interface{}, nodeId int64) (ok error) {
 
-	updated, ok := s.robotRepository.UpdateProcessing(ctx, data, nodeId)
-	s.zl.Sugar().Info(data, updated)
+	_, ok = s.robotRepository.UpdateProcessing(ctx, data, nodeId)
+	//s.zl.Sugar().Info(data, updated)
 	if ok != nil {
 		s.zl.Sugar().Error(ok)
 	}
@@ -431,6 +483,9 @@ func (s *Service) DoNextStepQuery(ctx context.Context, data map[string]interface
 		}
 	case terminate:
 		err = s.Terminate(ctx, data)
+		if err == nil {
+			s.zl.Sugar().Info("Terminate: lot - ", data["lot_id"], " proc - ", data["proc_id"])
+		}
 	default:
 		err = s.StepToNextNode(ctx, data)
 	}
@@ -528,7 +583,7 @@ func (s *Service) DivideLotsByOrders(lotsOrdersNoGroup []map[string]interface{},
 	}
 
 	cursor := -1
-	limit := params["cursorUpper"].(int) - 1
+	limit := params["cursor"].(int) - 1
 
 	count := 0
 	for _, value := range lotsOrderGroup {

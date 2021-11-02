@@ -5,29 +5,33 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"oms2/internal/pkg/config"
 	"time"
 
 	"github.com/olivere/elastic/v7"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+
+	"oms2/internal/oms"
 )
 
 const (
 	elasticReadyHealthStatus = "green"
 	pageSize                 = 1000
 	keepAliveCursorTime      = "5m"
+
+	ErrorIndex = "oms2-error-log-green"
+	ErrorAlias = "error-log"
+
+	SystemIndex = "oms2-system-log-green"
+	SystemAlias = "system-log"
+
+	ErrorMessage  = "ошибка"
+	SystemMessage = "системное сообщение"
 )
 
-type Config struct {
-	Url                 string `envconfig:"url" default:"http://localhost:9200"`
-	Login               string `envconfig:"login"`
-	Password            string `envconfig:"password"`
-	Sniff               bool   `envconfig:"sniff" default:"false"`
-	HealthCheckInterval int    `envconfig:"health_check_interval" default:"10"`
-}
-
-func NewElastic(cfg Config, zl *zap.Logger) *Elastic {
+func NewElastic(cfg config.Elastic, zl *zap.Logger) *Elastic {
 	return &Elastic{
 		cfg:    cfg,
 		logger: zl,
@@ -35,7 +39,7 @@ func NewElastic(cfg Config, zl *zap.Logger) *Elastic {
 }
 
 type Elastic struct {
-	cfg    Config
+	cfg    config.Elastic
 	client *elastic.Client
 	health *elastic.ClusterHealthService
 	logger *zap.Logger
@@ -66,6 +70,15 @@ func (e *Elastic) Start(ctx context.Context) error {
 	e.client = client
 	e.health = client.ClusterHealth()
 
+	if e.cfg.SkipIndexCreation {
+		return nil
+	}
+
+	err = e.CreateIndexesIfNotExists()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -86,6 +99,109 @@ func (e *Elastic) IsReady(ctx context.Context) bool {
 	}
 
 	return true
+}
+
+func (e *Elastic) CreateIndexesIfNotExists() (ok error) {
+
+	ok = e.CreateIndexIfNotExists(ErrorIndex, ErrorAlias)
+	if ok != nil {
+		return ok
+	}
+	ok = e.CreateIndexIfNotExists(SystemIndex, SystemAlias)
+
+	return ok
+}
+
+func (e *Elastic) CreateIndexIfNotExists(Index string, Alias string) error {
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ok, err := e.client.IndexExists(Index).Do(ctx)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+	mappingBody := getMappings()
+	ctx, _ = context.WithTimeout(context.Background(), 10*time.Second)
+	res, err := e.client.CreateIndex(Index).Body(mappingBody).Do(ctx)
+	if err != nil {
+		return err
+	}
+	if !res.Acknowledged {
+		return errors.New("Index " + Index + " does not created")
+	}
+	err = e.AddAlias(Index, Alias)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *Elastic) AddAlias(Index string, Alias string) error {
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	res, err := e.client.Alias().Add(Index, Alias).Do(ctx)
+	if err != nil {
+		return err
+	}
+	if !res.Acknowledged {
+		return errors.New("Alias do not acknowledged")
+	}
+	return nil
+}
+
+func (e *Elastic) Create(ctx context.Context, message oms.LogMessage, id string, Index string) (string, error) {
+	span := opentracing.SpanFromContext(ctx)
+	if span != nil {
+		span = opentracing.GlobalTracer().StartSpan("create", opentracing.ChildOf(span.Context()))
+		defer span.Finish()
+	}
+
+	elasticCtx, _ := context.WithTimeout(ctx, 3*time.Second)
+	idx := e.client.Index().Index(Index).BodyJson(message)
+	if id != "" {
+		idx.Id(id)
+	}
+
+	r, err := idx.Do(elasticCtx)
+	if err != nil {
+		return "", err
+	}
+
+	return r.Id, nil
+}
+
+func (e *Elastic) Get(ctx context.Context, id string, Alias string) (json.RawMessage, error) {
+	span := opentracing.SpanFromContext(ctx)
+	if span != nil {
+		span = opentracing.GlobalTracer().StartSpan("get", opentracing.ChildOf(span.Context()))
+		defer span.Finish()
+	}
+
+	elasticCtx, _ := context.WithTimeout(ctx, 3*time.Second)
+	result, err := e.client.Get().Index(Alias).Id(id).Do(elasticCtx)
+	if err != nil {
+		if elastic.IsNotFound(err) {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	return result.Source, nil
+}
+
+func (e *Elastic) Update(ctx context.Context, id string, schedule json.RawMessage, Index string) error {
+	span := opentracing.SpanFromContext(ctx)
+	if span != nil {
+		span = opentracing.GlobalTracer().StartSpan("update", opentracing.ChildOf(span.Context()))
+		defer span.Finish()
+	}
+
+	elasticCtx, _ := context.WithTimeout(ctx, 3*time.Second)
+	if _, err := e.client.Index().Index(Index).Id(id).BodyJson(schedule).Do(elasticCtx); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (e *Elastic) ScrollWithSource(ctx context.Context, indexName string, searchSource *elastic.SearchSource) ([]json.RawMessage, error) {
@@ -142,4 +258,32 @@ type elasticErrorLogger struct {
 
 func (e elasticErrorLogger) Printf(format string, v ...interface{}) {
 	e.l.Error(fmt.Sprintf(format, v...))
+}
+
+func getMappings() string {
+	return `
+{
+    "settings": {
+        "index": {
+            "number_of_shards": "1",
+            "number_of_replicas": "2"
+        }
+    },
+    "mappings": {
+        "properties": {
+            "name": {
+                "type": "keyword"
+            },
+			"node": {
+                "type": "text"
+            },
+            "description": {
+                "type": "text"
+            },
+			"kind": {
+                "type": "text"
+            }
+        }
+    }
+}`
 }

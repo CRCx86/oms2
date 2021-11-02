@@ -7,7 +7,6 @@ import (
 	"github.com/kelseyhightower/envconfig"
 
 	"oms2/internal/pkg/config"
-	v7 "oms2/internal/pkg/storage/elastic/v7"
 	"oms2/internal/pkg/storage/postgres"
 )
 
@@ -22,9 +21,8 @@ type Config struct {
 	StartTimeout       time.Duration    `envconfig:"start_timeout" default:"20s"`
 	StopTimeout        time.Duration    `envconfig:"stop_timeout" default:"60s"`
 	APIServer          config.APIServer `envconfig:"apiserver"`
-	Storage            config.Storage   `envconfig:"storage"`
 	Postgres           postgres.Config  `envconfig:"postgres"`
-	V7Elastic          v7.Config        `envconfig:"v7_elastic"`
+	V7Elastic          config.Elastic   `envconfig:"v7_elastic"`
 	Logger             config.Logger    `envconfig:"logger"`
 	MaxCollectTime     time.Duration    `envconfig:"max_collect_time" default:"10m"`
 	MaxRobotGoroutines int              `envconfig:"max_robot_goroutines" default:"10"`
@@ -70,9 +68,9 @@ type Request struct {
 }
 
 type ResponseSuccess struct {
-	Success int `json:"success"`
 	Envelope
-	Data json.RawMessage `json:"data" binding:"required"`
+	Success int             `json:"success"`
+	Data    json.RawMessage `json:"data" binding:"required"`
 }
 
 type RError struct {
@@ -81,7 +79,14 @@ type RError struct {
 }
 
 type ResponseError struct {
-	Success int `json:"success"`
 	Envelope
-	Error RError `json:"error" binding:"required"`
+	Success int    `json:"success"`
+	Error   RError `json:"error" binding:"required"`
+}
+
+type LogMessage struct {
+	Name        string `json:"name"`
+	Node        string `json:"node"`
+	Description string `json:"description"`
+	Type        string `json:"kind"`
 }
