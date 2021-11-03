@@ -23,7 +23,7 @@ type Config struct {
 	APIServer          config.APIServer `envconfig:"apiserver"`
 	Postgres           postgres.Config  `envconfig:"postgres"`
 	V7Elastic          config.Elastic   `envconfig:"v7_elastic"`
-	Logger             config.Logger    `envconfig:"logger"`
+	Logger             config.Logger    `envconfig:"zaplog"`
 	MaxCollectTime     time.Duration    `envconfig:"max_collect_time" default:"10m"`
 	MaxRobotGoroutines int              `envconfig:"max_robot_goroutines" default:"10"`
 	Version            string

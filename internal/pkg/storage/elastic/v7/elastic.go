@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"oms2/internal/pkg/config"
-	"oms2/internal/pkg/util"
 	"time"
 
 	"github.com/olivere/elastic/v7"
@@ -290,19 +289,4 @@ func getMappings() string {
         }
     }
 }`
-}
-
-func (e *Elastic) LogExternal(c context.Context, messageType string, message string, indexElastic string, data map[string]interface{}) {
-	go func() {
-		_, err := e.Create(c,
-			util.MessageToExternalLog(
-				data,
-				messageType,
-				message),
-			"",
-			indexElastic)
-		if err != nil {
-			e.zl.Sugar().Info(err)
-		}
-	}()
 }

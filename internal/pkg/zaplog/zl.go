@@ -1,4 +1,4 @@
-package logger
+package zaplog
 
 import (
 	"go.uber.org/zap"
@@ -22,12 +22,12 @@ func New(appName string, conf oms.Config) (*zap.Logger, error) {
 		ErrorOutputPaths: []string{"stderr"},
 	}
 
-	logger, err := zapConf.Build()
+	zl, err := zapConf.Build()
 	if err != nil {
 		return nil, err
 	}
 
-	logger = logger.With(
+	zl = zl.With(
 		zap.Any("application", struct {
 			Name      string `json:"name"`
 			Version   string `json:"version"`
@@ -40,7 +40,7 @@ func New(appName string, conf oms.Config) (*zap.Logger, error) {
 			Commit:    conf.Commit,
 		}),
 	)
-	return logger, nil
+	return zl, nil
 }
 
 func zapLevel(level string) (l zap.AtomicLevel) {

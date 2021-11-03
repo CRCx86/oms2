@@ -7,8 +7,8 @@ import (
 
 	"oms2/internal/oms"
 	"oms2/internal/oms/app"
-	"oms2/internal/pkg/logger"
 	"oms2/internal/pkg/tracing"
+	"oms2/internal/pkg/zaplog"
 )
 
 var (
@@ -33,7 +33,7 @@ func main() {
 	conf.BuildDate = buildDate
 	conf.Commit = commit
 
-	zapLogger, err := logger.New(app.Name, *conf)
+	zapLogger, err := zaplog.New(app.Name, *conf)
 	if err != nil {
 		panic(err)
 	}

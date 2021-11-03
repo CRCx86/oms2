@@ -352,3 +352,19 @@ func (r *Repository) DeleteFromRegisterActivityByThreadId(ctx context.Context, u
 	return r.RootRepository.Delete(ctx, _sql, args...)
 
 }
+
+func (r *Repository) ProcessingGroupList(ctx context.Context) ([]map[string]interface{}, error) {
+
+	_sql, args, err := squirrel.
+		StatementBuilder.
+		PlaceholderFormat(squirrel.Dollar).
+		Select("pg.group_id as group_id").
+		From("_InfoReg_PG as pg").
+		GroupBy("group_id").
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	return r.RootRepository.Get(ctx, _sql, args...)
+}

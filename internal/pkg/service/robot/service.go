@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	uuid "github.com/satori/go.uuid"
+	"oms2/internal/pkg/service/log"
 	v7 "oms2/internal/pkg/storage/elastic/v7"
 	"oms2/internal/pkg/util"
 	"os"
@@ -22,6 +23,7 @@ import (
 const (
 	IterationModel = "Iteration"
 	TilingModel    = "Tiling"
+	MultiTiling    = "MultiTiling"
 )
 
 const (
@@ -43,14 +45,14 @@ type Service struct {
 
 	action          *Action
 	robotRepository *robot.Repository
-	storage         *v7.Elastic
+	logger          *log.Service
 
 	managers map[string]chan int
 	robotCh  chan bool
 	running  bool
 }
 
-func NewService(cfg *oms.Config, action *Action, r *robot.Repository, storage *v7.Elastic, zl *zap.Logger) *Service {
+func NewService(cfg *oms.Config, action *Action, r *robot.Repository, logger *log.Service, zl *zap.Logger) *Service {
 	return &Service{
 		zl:              zl,
 		cfg:             cfg,
@@ -60,7 +62,7 @@ func NewService(cfg *oms.Config, action *Action, r *robot.Repository, storage *v
 		model:           TilingModel,
 		action:          action,
 		robotRepository: r,
-		storage:         storage,
+		logger:          logger,
 		managers:        make(map[string]chan int),
 		robotCh:         make(chan bool),
 	}
@@ -73,13 +75,10 @@ func (s *Service) Start(_ context.Context) error {
 	signals := make(chan os.Signal)
 	signal.Notify(signals, os.Interrupt)
 
-	//s.wg.Add(1)
 	go func() {
 
 		defer func() {
-			message := "Остановка сервиса..."
-			s.zl.Sugar().Info(message)
-			s.storage.LogExternal(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+			s.logger.LogMessage(c, v7.SystemMessage, "Остановка сервиса...", v7.SystemIndex, util.EmptyDataStruct())
 		}()
 
 		s.running = true
@@ -90,16 +89,8 @@ func (s *Service) Start(_ context.Context) error {
 				if res {
 					s.ticker.Stop()
 
-					message := "Остановка тикера"
-					s.zl.Sugar().Info(message)
-					s.storage.LogExternal(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+					s.logger.LogMessage(c, v7.SystemMessage, "Остановка тикера", v7.SystemIndex, util.EmptyDataStruct())
 
-					//go func() {
-					//	defer close(s.robotCh)
-					//
-					//	s.robotCh <- true
-					//	s.zl.Sugar().Info("robotCh: true")
-					//}()
 					cancel()
 					return
 				}
@@ -125,17 +116,9 @@ func (s *Service) Start(_ context.Context) error {
 	go func() {
 		for {
 			select {
-			//case <-ctx.Done():
-			//	s.zl.Sugar().Info("Ебнулся контекст")
-
-			//s.robotCh <- true
-			//s.done <- true
-			//close(s.done)
-			//return
 			case sig := <-signals:
 				message := fmt.Sprintf("Got %s signals. Aborting...", sig)
-				s.zl.Sugar().Info(message)
-				s.storage.LogExternal(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+				s.logger.LogMessage(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 
 				go func() {
 					s.robotCh <- true
@@ -149,10 +132,8 @@ func (s *Service) Start(_ context.Context) error {
 	}()
 
 	message := fmt.Sprintf("Robot has started")
-	s.zl.Sugar().Info(message)
-	s.storage.LogExternal(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+	s.logger.LogMessage(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 
-	//cancel()
 	return nil
 
 }
@@ -162,21 +143,24 @@ func (s *Service) Stop(_ context.Context) error {
 		s.done <- true
 	}()
 
-	//s.wg.Wait()
-
 	return nil
 }
 
 func (s *Service) Do(ctx context.Context, t time.Time) (err error) {
 
 	switch s.model {
+	case IterationModel:
+		err = s.Iteration(ctx, t)
 	case TilingModel:
 		if !s.running {
 			break
 		}
 		err = s.Tiling(ctx, t)
-	case IterationModel:
-		err = s.Iteration(ctx, t)
+	case MultiTiling:
+		if !s.running {
+			break
+		}
+		err = s.MultiTiling(ctx, t)
 
 	default:
 
@@ -230,13 +214,17 @@ func (s *Service) DoAsync(ctx context.Context) (int, error) {
 	var wg sync.WaitGroup
 	for _, items := range lotsByStream {
 
-		select {
-		case res := <-s.robotCh:
-			s.zl.Sugar().Info(fmt.Sprintf("RES %t signals. Aborting...", res))
-			if res {
-				return 0, ok
+		go func() {
+			select {
+			case res := <-s.robotCh:
+				if res {
+					s.running = !res
+				}
 			}
-		default:
+		}()
+
+		if !s.running {
+			break
 		}
 
 		wg.Add(1)
@@ -258,8 +246,7 @@ func (s *Service) DoAsync(ctx context.Context) (int, error) {
 func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 
 	message := fmt.Sprintf("Start Tiling manager: %s", t.String())
-	s.zl.Sugar().Info(message)
-	s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+	s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 
 	startTime := time.Now()
 	for {
@@ -299,8 +286,67 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 			s.managers[uid] = manager
 			go s.TilingThreadManager(ctx, uid, manager, paramsManager)
 
-			//receivers := len(s.managers)
-			//s.zl.Sugar().Info("running managers: ", receivers)
+			message := fmt.Sprintf("running managers: %d", len(s.managers))
+			s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+		}
+
+		for _, data := range s.managers {
+			go func(ch chan int) {
+				select {
+				case item := <-ch:
+					message := fmt.Sprintf("manager data: %d", item)
+					s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+				default:
+				}
+			}(data)
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	message = fmt.Sprintf("End Tiling manager: %d", time.Now().Sub(startTime))
+	s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+
+	return ok
+}
+
+func (s *Service) MultiTiling(ctx context.Context, t time.Time) (ok error) {
+
+	message := fmt.Sprintf("Start Tiling manager: %s", t.String())
+	s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+
+	startTime := time.Now()
+	for {
+
+		go func() {
+			select {
+			case res := <-s.robotCh:
+				if res {
+					s.running = !res
+				}
+			default:
+			}
+		}()
+
+		isContinue := s.running && (time.Now().Sub(startTime) < s.restartTimeOut)
+		if !isContinue {
+			break
+		}
+
+		paramsManager := make(map[string]interface{}, 0)
+		paramsManager["cursor"] = s.cfg.MaxRobotGoroutines
+
+		registerActivityList, ok := s.robotRepository.GetRegisterActivityList(ctx)
+		if ok != nil {
+			return ok
+		}
+
+		//groupList, ok := s.robotRepository.ProcessingGroupList(ctx)
+		//if ok != nil {
+		//	return ok
+		//}
+
+		if len(registerActivityList) < s.cfg.MaxRobotGoroutines && len(s.managers) == 0 {
 
 		}
 
@@ -309,19 +355,17 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 				select {
 				case item := <-ch:
 					message := fmt.Sprintf("manager data: %d", item)
-					s.zl.Sugar().Info(message)
-					s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+					s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 				default:
 				}
 			}(data)
 		}
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	message = fmt.Sprintf("End Tiling manager: %d", time.Now().Sub(startTime))
-	s.zl.Sugar().Info(message)
-	s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+	s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 
 	return ok
 }
@@ -470,8 +514,7 @@ func (s *Service) DoNextStepQuery(ctx context.Context, data map[string]interface
 		err = s.Terminate(ctx, data)
 		if err == nil {
 			message := fmt.Sprintf("Terminate: lot - %d, proc - %d", data["lot_id"], data["proc_id"])
-			s.zl.Sugar().Info(message)
-			s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+			s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 		}
 	default:
 		err = s.StepToNextNode(ctx, data)
@@ -490,8 +533,7 @@ func (s *Service) StepToNextNode(ctx context.Context, data map[string]interface{
 	nextNode, ok := s.FindNextNode(ctx, data["node_id"])
 	if ok == nil && nextNode != 0 {
 		message := fmt.Sprintf("Next step...")
-		s.zl.Sugar().Info(message)
-		s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+		s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 		return s.RecordToNextStep(ctx, data, nextNode)
 	}
 
