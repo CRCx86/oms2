@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -21,15 +22,19 @@ import (
 )
 
 const (
-	IterationModel = "Iteration"
-	TilingModel    = "Tiling"
-	MultiTiling    = "MultiTiling"
+	IterationModel   = "Iteration"
+	TilingModel      = "Tiling"
+	MultiTilingModel = "MultiTiling"
 )
 
 const (
 	action    = "action"
 	wait      = "wait"
 	terminate = "terminate"
+)
+
+const (
+	PrefixKeyThreadManager = "ManagerThreadRun"
 )
 
 type Service struct {
@@ -156,7 +161,7 @@ func (s *Service) Do(ctx context.Context, t time.Time) (err error) {
 			break
 		}
 		err = s.Tiling(ctx, t)
-	case MultiTiling:
+	case MultiTilingModel:
 		if !s.running {
 			break
 		}
@@ -268,6 +273,7 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 
 		paramsManager := make(map[string]interface{}, 0)
 		paramsManager["cursor"] = s.cfg.MaxRobotGoroutines
+		paramsManager["group"] = -1
 
 		registerActivityList, ok := s.robotRepository.GetRegisterActivityList(ctx)
 		if ok != nil {
@@ -280,7 +286,8 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 				paramsManager["cursor"] = s.cfg.MaxRobotGoroutines - len(registerActivityList) - 1
 			}
 
-			uid := uuid.NewV4().String()
+			//uid := uuid.NewV4().String()
+			uid := PrefixKeyThreadManager
 			manager := make(chan int) // канал для менеджера потоков
 
 			s.managers[uid] = manager
@@ -312,7 +319,7 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 
 func (s *Service) MultiTiling(ctx context.Context, t time.Time) (ok error) {
 
-	message := fmt.Sprintf("Start Tiling manager: %s", t.String())
+	message := fmt.Sprintf("Start MultiTilingModel manager: %s", t.String())
 	s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 
 	startTime := time.Now()
@@ -341,10 +348,40 @@ func (s *Service) MultiTiling(ctx context.Context, t time.Time) (ok error) {
 			return ok
 		}
 
-		//groupList, ok := s.robotRepository.ProcessingGroupList(ctx)
-		//if ok != nil {
-		//	return ok
-		//}
+		groupList, ok := s.robotRepository.ProcessingGroupList(ctx)
+		if ok != nil {
+			return ok
+		}
+
+		for _, val := range groupList {
+
+			gpId := val["group_id"].(int32)
+			threadKey := PrefixKeyThreadManager + strconv.Itoa(int(gpId))
+
+			activityCount := 0
+			if s.managers[threadKey] == nil {
+				for _, v := range registerActivityList {
+					groupId := v["group_id"].(int32)
+					if gpId == groupId {
+						activityCount += 1
+					}
+				}
+
+				if s.cfg.MaxRobotGoroutines >= activityCount {
+
+					paramsManager["cursor"] = s.cfg.MaxRobotGoroutines - activityCount
+					paramsManager["group"] = gpId
+
+					manager := make(chan int) // канал для менеджера потоков
+					s.managers[threadKey] = manager
+
+					go s.TilingThreadManager(ctx, threadKey, manager, paramsManager)
+
+					message := fmt.Sprintf("running managers: %d", len(s.managers))
+					s.logger.LogMessage(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+				}
+			}
+		}
 
 		if len(registerActivityList) < s.cfg.MaxRobotGoroutines && len(s.managers) == 0 {
 
@@ -377,7 +414,7 @@ func (s *Service) TilingThreadManager(ctx context.Context, uid string, manager c
 		defer close(manager)
 	}()
 
-	lotsOrdersNoGroup, ok := s.robotRepository.GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx)
+	lotsOrdersNoGroup, ok := s.robotRepository.GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx, params)
 	if ok != nil {
 		s.zl.Sugar().Info(ok)
 		return
@@ -396,7 +433,7 @@ func (s *Service) TilingThreadManager(ctx context.Context, uid string, manager c
 				itemMap["thread_key"] = uid
 				itemMap["start_time"] = time.Now()
 				itemMap["thread_id"] = uid
-				itemMap["group_id"] = -1
+				itemMap["group_id"] = params["group"]
 				activity[order] = itemMap
 			}
 		}

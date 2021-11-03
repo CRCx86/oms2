@@ -145,11 +145,12 @@ CREATE TABLE _InfoReg_ES
     semaphore_id int REFERENCES _Ref_ET (id) ON UPDATE CASCADE,
     event_id     int REFERENCES _Ref_E (id),
     entry_time   timestamp WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    order_id   int REFERENCES _Ref_O (id) ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT _InfoReg_ES_pkey PRIMARY KEY (id, lot_id, semaphore_id)
 );
-INSERT INTO _InfoReg_ES(lot_id, semaphore_id, event_id)
-VALUES (1, 1, 1),
-       (2, 2, 2);
+INSERT INTO _InfoReg_ES(lot_id, semaphore_id, event_id, order_id)
+VALUES (1, 1, 1, 1),
+       (2, 2, 2, 2);
 -- rollback drop table _InfoReg_ES;
 
 -- changeset zinov:2021-10-25-14-11-5
@@ -175,4 +176,5 @@ CREATE TABLE _InfoReg_PG
     group_id int not null,
     CONSTRAINT _InfoReg_PG_pkey PRIMARY KEY (id, order_id)
 );
+INSERT INTO _InfoReg_PG(order_id, group_id) VALUES (1, 0), (2, 0);
 -- rollback drop table _InfoReg_PG;

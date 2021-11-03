@@ -292,9 +292,16 @@ func (r *Repository) GetRegisterActivityList(ctx context.Context) ([]map[string]
 
 }
 
-func (r *Repository) GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx context.Context) ([]map[string]interface{}, error) {
+func (r *Repository) GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx context.Context, params map[string]interface{}) ([]map[string]interface{}, error) {
 
-	_sql := `select
+	_sql := ``
+	var args []interface{}
+	args = append(args, time.Now())
+	args = append(args, time.Now().Add(-24*time.Hour))
+
+	groupId := params["group"]
+	if groupId == -1 {
+		_sql = `select
 				inner_query.lot_id as lot_id,
 				lots.order_id as order_id,
 				inner_query.thread as thread,
@@ -305,7 +312,9 @@ func (r *Repository) GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx
 				   case when csr.thread >= 900 then csr.thread else 0 end as thread
 			from _inforeg_csr as csr
 			where csr.next_run_time <= $1
+
 			union
+
 			select
 				   es.lot_id,
 				   max(5000),
@@ -328,10 +337,60 @@ func (r *Repository) GetOrderByLotsFromProcessingRegisterAndRegisterActivity(ctx
 				lots.order_id,
 				inner_query.thread
 			order by weight desc`
+	} else {
 
-	var args []interface{}
-	args = append(args, time.Now())
-	args = append(args, time.Now().Add(-24*time.Hour))
+		_sql = `select
+					inner_query.lot_id as lot_id,
+					inner_query.order_id as order_id,
+					inner_query.thread as thread,
+					sum(inner_query.weight) as weight
+				from (select
+						  csr.lot_id as lot_id,
+						  csr.weight as weight,
+						  case when csr.thread >= 900 then csr.thread else 0 end as thread,
+						  pg.order_id as order_id
+					  from _inforeg_pg as pg
+								inner join _ref_o ro on ro.id = pg.order_id
+								inner join _ref_l rl on ro.id = rl.order_id
+							   inner join _inforeg_csr as csr on rl.id = csr.lot_id
+							   left join _inforeg_pa as pa on pg.order_id = pa.order_id
+					  where
+							  csr.next_run_time <= $1
+						and pa.order_id is null
+						and pg.group_id = $3
+				
+					  union all
+				
+					  select
+						  es.lot_id,
+						  max(5000),
+						  max(0),
+						  pg.order_id as order_id
+					  from _inforeg_pg as pg
+							   inner join _inforeg_es as es on pg.order_id = es.order_id
+							   inner join _inforeg_csr csr on es.lot_id = csr.lot_id
+							   inner join _refvt_me rme on csr.node_id = rme.node_id
+						  and rme.event_type_id = es.semaphore_id
+							   left join _inforeg_pa as pa
+										 on pg.order_id = pa.order_id
+					  where
+							  es.entry_time >= $2
+						and csr.next_run_time > $1
+						and pa.order_id is null
+						and pg.group_id = $3
+					  group by
+						  es.lot_id,
+						  pg.order_id
+					 ) as inner_query
+				
+				group by
+					inner_query.lot_id,
+					inner_query.order_id,
+					inner_query.thread
+				order by weight desc`
+
+		args = append(args, groupId)
+	}
 
 	return r.RootRepository.Get(ctx, _sql, args...)
 }
