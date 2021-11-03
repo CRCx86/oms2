@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func ParseRowQuery(rows pgx.Rows) ([]map[string]interface{}, error) {
@@ -57,6 +58,7 @@ func MessageToExternalLog(data map[string]interface{}, Type string, Description 
 		Node:        data["node_id"].(string),
 		Description: Description,
 		Type:        Type,
+		Timestamp:   time.Now().String(),
 	}
 }
 

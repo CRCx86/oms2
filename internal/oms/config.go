@@ -89,4 +89,5 @@ type LogMessage struct {
 	Node        string `json:"node"`
 	Description string `json:"description"`
 	Type        string `json:"kind"`
+	Timestamp   string `json:"timestamp"`
 }

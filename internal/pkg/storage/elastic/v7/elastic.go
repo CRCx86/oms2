@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"oms2/internal/pkg/config"
+	"oms2/internal/pkg/util"
 	"time"
 
 	"github.com/olivere/elastic/v7"
@@ -31,18 +32,18 @@ const (
 	SystemMessage = "системное сообщение"
 )
 
-func NewElastic(cfg config.Elastic, zl *zap.Logger) *Elastic {
-	return &Elastic{
-		cfg:    cfg,
-		logger: zl,
-	}
-}
-
 type Elastic struct {
 	cfg    config.Elastic
 	client *elastic.Client
 	health *elastic.ClusterHealthService
-	logger *zap.Logger
+	zl     *zap.Logger
+}
+
+func NewElastic(cfg config.Elastic, zl *zap.Logger) *Elastic {
+	return &Elastic{
+		cfg: cfg,
+		zl:  zl,
+	}
 }
 
 func (e *Elastic) Client() *elastic.Client {
@@ -56,7 +57,7 @@ func (e *Elastic) Start(ctx context.Context) error {
 		elastic.SetHealthcheck(true),
 		elastic.SetHealthcheckInterval(time.Duration(e.cfg.HealthCheckInterval)*time.Second),
 		elastic.SetBasicAuth(e.cfg.Login, e.cfg.Password),
-		elastic.SetErrorLog(NewElasticErrorLogger(e.logger)),
+		elastic.SetErrorLog(NewElasticErrorLogger(e.zl)),
 	)
 	if err != nil {
 		return err
@@ -90,7 +91,7 @@ func (e *Elastic) Stop(_ context.Context) error {
 func (e *Elastic) IsReady(ctx context.Context) bool {
 	resp, err := e.health.Do(ctx)
 	if err != nil {
-		e.logger.Error("cannot check elastic v7 health", zap.Error(err))
+		e.zl.Error("cannot check elastic v7 health", zap.Error(err))
 		return false
 	}
 
@@ -282,8 +283,26 @@ func getMappings() string {
             },
 			"kind": {
                 "type": "text"
-            }
+            },
+			"timestamp": {
+				"type": "text"
+			}
         }
     }
 }`
+}
+
+func (e *Elastic) LogExternal(c context.Context, messageType string, message string, indexElastic string, data map[string]interface{}) {
+	go func() {
+		_, err := e.Create(c,
+			util.MessageToExternalLog(
+				data,
+				messageType,
+				message),
+			"",
+			indexElastic)
+		if err != nil {
+			e.zl.Sugar().Info(err)
+		}
+	}()
 }

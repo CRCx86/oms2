@@ -66,39 +66,55 @@ func NewService(cfg *oms.Config, action *Action, r *robot.Repository, storage *v
 	}
 }
 
-func (s *Service) Start(ctx context.Context) error {
+func (s *Service) Start(_ context.Context) error {
+
+	c, cancel := context.WithTimeout(context.Background(), s.cfg.MaxCollectTime)
 
 	signals := make(chan os.Signal)
 	signal.Notify(signals, os.Interrupt)
 
-	s.wg.Add(1)
+	//s.wg.Add(1)
 	go func() {
 
-		defer s.wg.Done()
+		defer func() {
+			message := "Остановка сервиса..."
+			s.zl.Sugar().Info(message)
+			s.storage.LogExternal(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+		}()
 
 		s.running = true
 
 		for {
-
 			select {
 			case res := <-s.done:
 				if res {
-					close(s.robotCh)
 					s.ticker.Stop()
-					return
-				}
-			case t := <-s.ticker.C:
-				c, cancel := context.WithTimeout(context.Background(), s.cfg.MaxCollectTime)
-				err := s.Do(c, t)
-				if err != nil {
-					s.ticker.Stop()
-					s.done <- true
-					close(s.done)
-					s.zl.Sugar().Error(err)
+
+					message := "Остановка тикера"
+					s.zl.Sugar().Info(message)
+					s.storage.LogExternal(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+
+					//go func() {
+					//	defer close(s.robotCh)
+					//
+					//	s.robotCh <- true
+					//	s.zl.Sugar().Info("robotCh: true")
+					//}()
 					cancel()
 					return
 				}
-				cancel()
+			case t := <-s.ticker.C:
+
+				err := s.Do(c, t)
+				if err != nil {
+					s.zl.Sugar().Error(err)
+					s.ticker.Stop()
+
+					go func() {
+						s.done <- true
+					}()
+				}
+
 			default:
 
 			}
@@ -107,56 +123,46 @@ func (s *Service) Start(ctx context.Context) error {
 	}()
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			//s.robotCh <- true
-			s.done <- true
-			close(s.done)
-			return
-		case sig := <-signals:
-			message := fmt.Sprintf("Got %s signals. Aborting...", sig)
-			s.zl.Sugar().Info(message)
-			_, err := s.storage.Create(ctx,
-				util.MessageToExternalLog(
-					util.EmptyDataStruct(),
-					v7.SystemMessage,
-					message),
-				"",
-				v7.SystemIndex)
-			if err != nil {
-				s.zl.Sugar().Info(err)
-			}
+		for {
+			select {
+			//case <-ctx.Done():
+			//	s.zl.Sugar().Info("Ебнулся контекст")
 
-			s.robotCh <- true
-			s.done <- true
-			close(s.done)
-			return
+			//s.robotCh <- true
+			//s.done <- true
+			//close(s.done)
+			//return
+			case sig := <-signals:
+				message := fmt.Sprintf("Got %s signals. Aborting...", sig)
+				s.zl.Sugar().Info(message)
+				s.storage.LogExternal(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
+
+				go func() {
+					s.robotCh <- true
+					s.done <- true
+				}()
+
+				return
+			}
 		}
+
 	}()
 
 	message := fmt.Sprintf("Robot has started")
 	s.zl.Sugar().Info(message)
-	_, err := s.storage.Create(ctx,
-		util.MessageToExternalLog(
-			util.EmptyDataStruct(),
-			v7.SystemMessage,
-			message),
-		"",
-		v7.SystemIndex)
-	if err != nil {
-		s.zl.Sugar().Info(err)
-	}
+	s.storage.LogExternal(c, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 
+	//cancel()
 	return nil
 
 }
 
 func (s *Service) Stop(_ context.Context) error {
+	go func() {
+		s.done <- true
+	}()
 
-	s.done <- true
-	close(s.done)
-
-	s.wg.Wait()
+	//s.wg.Wait()
 
 	return nil
 }
@@ -253,33 +259,22 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 
 	message := fmt.Sprintf("Start Tiling manager: %s", t.String())
 	s.zl.Sugar().Info(message)
-	_, err := s.storage.Create(ctx,
-		util.MessageToExternalLog(
-			util.EmptyDataStruct(),
-			v7.SystemMessage,
-			message),
-		"",
-		v7.SystemIndex)
-	if err != nil {
-		s.zl.Sugar().Info(err)
-	}
+	s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 
 	startTime := time.Now()
-
-	currentProcessDuration := 0
 	for {
 
-		select {
-		case res := <-s.robotCh:
-			if res {
-				s.running = !res
-				return ok
+		go func() {
+			select {
+			case res := <-s.robotCh:
+				if res {
+					s.running = !res
+				}
+			default:
 			}
-		default:
+		}()
 
-		}
-
-		isContinue := s.running && (currentProcessDuration < int(s.restartTimeOut.Seconds()))
+		isContinue := s.running && (time.Now().Sub(startTime) < s.restartTimeOut)
 		if !isContinue {
 			break
 		}
@@ -313,29 +308,20 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 			go func(ch chan int) {
 				select {
 				case item := <-ch:
-					s.zl.Sugar().Info("manager data: ", item)
+					message := fmt.Sprintf("manager data: %d", item)
+					s.zl.Sugar().Info(message)
+					s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 				default:
 				}
 			}(data)
 		}
 
-		time.Sleep(1 * time.Second)
-
-		currentProcessDuration = time.Now().Second() - startTime.Second()
+		time.Sleep(500 * time.Millisecond)
 	}
 
-	message = fmt.Sprintf("End Tiling manager: %s", time.Now().Sub(t).String())
+	message = fmt.Sprintf("End Tiling manager: %d", time.Now().Sub(startTime))
 	s.zl.Sugar().Info(message)
-	_, err = s.storage.Create(ctx,
-		util.MessageToExternalLog(
-			util.EmptyDataStruct(),
-			v7.SystemMessage,
-			message),
-		"",
-		v7.SystemIndex)
-	if err != nil {
-		s.zl.Sugar().Info(err)
-	}
+	s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 
 	return ok
 }
@@ -343,7 +329,6 @@ func (s *Service) Tiling(ctx context.Context, t time.Time) (ok error) {
 func (s *Service) TilingThreadManager(ctx context.Context, uid string, manager chan int, params map[string]interface{}) {
 
 	defer func() {
-		//s.zl.Sugar().Info("Delete thread: ", uid)
 		delete(s.managers, uid)
 		defer close(manager)
 	}()
@@ -484,7 +469,9 @@ func (s *Service) DoNextStepQuery(ctx context.Context, data map[string]interface
 	case terminate:
 		err = s.Terminate(ctx, data)
 		if err == nil {
-			s.zl.Sugar().Info("Terminate: lot - ", data["lot_id"], " proc - ", data["proc_id"])
+			message := fmt.Sprintf("Terminate: lot - %d, proc - %d", data["lot_id"], data["proc_id"])
+			s.zl.Sugar().Info(message)
+			s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 		}
 	default:
 		err = s.StepToNextNode(ctx, data)
@@ -502,7 +489,9 @@ func (s *Service) StepToNextNode(ctx context.Context, data map[string]interface{
 
 	nextNode, ok := s.FindNextNode(ctx, data["node_id"])
 	if ok == nil && nextNode != 0 {
-		s.zl.Sugar().Warn("Next step...")
+		message := fmt.Sprintf("Next step...")
+		s.zl.Sugar().Info(message)
+		s.storage.LogExternal(ctx, v7.SystemMessage, message, v7.SystemIndex, util.EmptyDataStruct())
 		return s.RecordToNextStep(ctx, data, nextNode)
 	}
 
