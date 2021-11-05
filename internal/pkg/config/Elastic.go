@@ -1,7 +1,7 @@
 package config
 
 type Elastic struct {
-	Url                 string `envconfig:"url" default:"http://localhost:9700"`
+	Url                 string `envconfig:"url" default:"http://localhost:9200"`
 	Login               string `envconfig:"login"`
 	Password            string `envconfig:"password"`
 	Sniff               bool   `envconfig:"sniff" default:"false"`
